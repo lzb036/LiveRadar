@@ -219,13 +219,11 @@ function renderPagination(selector, pagination, type) {
   const target = $(selector);
   if (!target) return;
   const total = Number(pagination?.total || 0);
-  const totalPages = Number(pagination?.total_pages || 0);
-  const page = Number(pagination?.page || 1);
-  if (total <= state.pageSize || totalPages <= 1) {
-    target.innerHTML = "";
-    target.classList.add("is-hidden");
-    return;
-  }
+  const totalPages = Math.max(1, Number(pagination?.total_pages || 0));
+  const page = Math.min(
+    totalPages,
+    Math.max(1, Number(pagination?.page || 1)),
+  );
 
   const previousPage = Math.max(1, page - 1);
   const nextPage = Math.min(totalPages, page + 1);
@@ -233,8 +231,8 @@ function renderPagination(selector, pagination, type) {
   target.innerHTML = `
     <span class="pagination-copy">第 ${page} / ${totalPages} 页 · 共 ${total} 条 · 每页 ${state.pageSize} 条</span>
     <span class="pagination-actions">
-      <button class="pagination-button" data-page-action="${type}" data-page="${previousPage}" ${page <= 1 ? "disabled" : ""}>上一页</button>
-      <button class="pagination-button" data-page-action="${type}" data-page="${nextPage}" ${page >= totalPages ? "disabled" : ""}>下一页</button>
+      <button class="pagination-button" data-page-action="${type}" data-page="${previousPage}" ${total === 0 || page <= 1 ? "disabled" : ""}>上一页</button>
+      <button class="pagination-button" data-page-action="${type}" data-page="${nextPage}" ${total === 0 || page >= totalPages ? "disabled" : ""}>下一页</button>
     </span>
   `;
 }
