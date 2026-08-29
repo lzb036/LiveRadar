@@ -10,6 +10,7 @@ Group=liveradar
 WorkingDirectory=/www/wwwroot/LiveRadar
 ExecStart=/usr/bin/python3.11 /www/wwwroot/LiveRadar/server.py
 EnvironmentFile=-/etc/liveradar/liveradar.env
+EnvironmentFile=-/etc/liveradar/douyin-client.env
 Environment=LIVE_MONITOR_HOST=127.0.0.1
 Environment=LIVE_MONITOR_PORT=8765
 Environment=PYTHONUNBUFFERED=1
