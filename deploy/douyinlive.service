@@ -1,0 +1,20 @@
+[Unit]
+Description=douyinLive local status helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=liveradar
+Group=liveradar
+WorkingDirectory=/opt/douyinlive
+ExecStart=/opt/douyinlive/douyinLive --port 1088 --log-level warn
+EnvironmentFile=/etc/liveradar/douyinlive.env
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

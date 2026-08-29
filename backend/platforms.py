@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import html as html_lib
 import json
+import os
 import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
 
@@ -44,14 +45,21 @@ class RoomSnapshot:
     live_started_at: str = ""
 
 
-def http_get(url: str, *, timeout: int = 15) -> str:
+def http_get(
+    url: str,
+    *,
+    timeout: int = 15,
+    headers: dict[str, str] | None = None,
+) -> str:
+    request_headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+    }
+    request_headers.update(headers or {})
     request = Request(
         url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-        },
+        headers=request_headers,
     )
     try:
         with urlopen(request, timeout=timeout) as response:
@@ -337,6 +345,10 @@ class DouyinAdapter:
         if reference.platform != "douyin":
             raise PlatformError("抖音适配器收到的不是抖音房间")
 
+        helper_snapshot = _fetch_douyin_with_helper(reference)
+        if helper_snapshot is not None:
+            return helper_snapshot
+
         source = _normalise_douyin_html(http_get(reference.room_url))
         web_room_id = _extract_douyin_scalar(source, "web_rid")
         status_match = re.search(r'"is_live_end"\s*:\s*(\d+)', source)
@@ -385,6 +397,53 @@ class DouyinAdapter:
             anchor_key=anchor_key,
             profile_url=profile_url,
         )
+
+
+def _fetch_douyin_with_helper(
+    reference: RoomReference,
+) -> RoomSnapshot | None:
+    helper_url = os.environ.get("DOUYIN_LIVE_API_URL", "").strip().rstrip("/")
+    if not helper_url:
+        return None
+
+    api_key = os.environ.get("DOUYIN_LIVE_API_KEY", "").strip()
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    endpoint = (
+        f"{helper_url}/api/v1/rooms/"
+        f"{quote(reference.room_key, safe='')}"
+    )
+    try:
+        payload = json.loads(http_get(endpoint, headers=headers))
+    except json.JSONDecodeError as exc:
+        raise PlatformError("抖音状态辅助服务返回了无法解析的结果") from exc
+
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise PlatformError("抖音状态辅助服务返回异常")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise PlatformError("抖音状态辅助服务缺少直播状态")
+
+    helper_status = str(data.get("status") or "").strip()
+    if helper_status == "online":
+        status = "live"
+    elif helper_status in {"offline", "account_no_room"}:
+        status = "offline"
+    elif helper_status == "not_found":
+        raise PlatformError("抖音直播间不存在")
+    else:
+        raise PlatformError("抖音状态辅助服务暂时无法确认直播状态")
+
+    anchor = data.get("anchor")
+    if not isinstance(anchor, dict):
+        anchor = {}
+    return RoomSnapshot(
+        status=status,
+        anchor_name=str(anchor.get("nickname") or ""),
+        title=str(data.get("title") or ""),
+        room_id=str(data.get("room_id") or reference.room_key),
+        anchor_key=reference.anchor_key,
+        profile_url=reference.profile_url,
+    )
 
 
 ADAPTERS = {

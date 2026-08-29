@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -151,6 +152,43 @@ class PlatformAdapterTests(unittest.TestCase):
         self.assertEqual(snapshot.room_id, "7679259829717732130")
         self.assertEqual(snapshot.cover_url, "https://example.com/poster.jpg")
         self.assertEqual(snapshot.live_started_at, "")
+
+    @patch.dict(
+        os.environ,
+        {
+            "DOUYIN_LIVE_API_URL": "http://127.0.0.1:1088",
+            "DOUYIN_LIVE_API_KEY": "test-api-key",
+        },
+        clear=False,
+    )
+    @patch("backend.platforms.http_get")
+    def test_douyin_helper_snapshot(self, mock_get):
+        mock_get.return_value = json.dumps(
+            {
+                "ok": True,
+                "data": {
+                    "live_id": "6096197105",
+                    "status": "offline",
+                    "is_live": False,
+                    "has_room": True,
+                    "room_id": "7679259829717732130",
+                    "title": "上一场直播",
+                    "anchor": {"nickname": "Gus"},
+                },
+            }
+        )
+
+        reference = parse_room_reference("6096197105", "douyin")
+        snapshot = DouyinAdapter().fetch(reference)
+
+        self.assertEqual(snapshot.status, "offline")
+        self.assertEqual(snapshot.anchor_name, "Gus")
+        self.assertEqual(snapshot.title, "上一场直播")
+        self.assertEqual(snapshot.room_id, "7679259829717732130")
+        mock_get.assert_called_once_with(
+            "http://127.0.0.1:1088/api/v1/rooms/6096197105",
+            headers={"Authorization": "Bearer test-api-key"},
+        )
 
     @patch("backend.platforms.http_get")
     def test_douyin_missing_status_is_error(self, mock_get):
