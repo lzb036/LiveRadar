@@ -4,6 +4,7 @@ const state = {
   settings: {},
   events: [],
   filter: "all",
+  platform: "all",
   query: "",
   busy: false,
   editingStreamId: null,
@@ -15,6 +16,7 @@ const state = {
   streamPagination: { page: 1, page_size: 20, total: 0, total_pages: 0 },
   eventPagination: { page: 1, page_size: 20, total: 0, total_pages: 0 },
   searchTimer: null,
+  pendingConfirmation: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -172,7 +174,7 @@ function renderStreams() {
     })
     .join("");
 
-  const hasStreams = state.streamPagination.total > 0;
+  const hasStreams = Number(state.metrics?.total || 0) > 0;
   const hasResults = filtered.length > 0;
   document.querySelector(".table-frame").classList.toggle("has-data", hasResults);
   emptyState.classList.toggle("is-hidden", hasResults);
@@ -188,6 +190,7 @@ function renderStreams() {
 
 function renderEvents() {
   const target = $("#eventList");
+  updateNotificationActions();
   if (!state.events.length) {
     target.innerHTML = `<div class="event-empty">还没有通知记录</div>`;
     renderPagination("#eventPagination", state.eventPagination, "events");
@@ -213,6 +216,13 @@ function renderEvents() {
     })
     .join("");
   renderPagination("#eventPagination", state.eventPagination, "events");
+}
+
+function updateNotificationActions() {
+  const button = $("#clearNotificationsButton");
+  if (button) {
+    button.disabled = Number(state.eventPagination?.total || 0) === 0;
+  }
 }
 
 function renderPagination(selector, pagination, type) {
@@ -245,6 +255,7 @@ async function loadDashboard(options = {}) {
     const streamParams = new URLSearchParams({
       page: String(state.streamPage),
       filter: state.filter,
+      platform: state.platform,
       query: state.query,
     });
     const eventParams = new URLSearchParams({
@@ -303,6 +314,37 @@ function showToast(message, type = "success") {
   toast.textContent = message;
   $("#toastRegion").appendChild(toast);
   window.setTimeout(() => toast.remove(), 3600);
+}
+
+function openConfirmDialog({ title, message, confirmLabel, action }) {
+  state.pendingConfirmation = action;
+  $("#confirmDialogTitle").textContent = title;
+  $("#confirmDialogMessage").textContent = message;
+  $("#confirmSubmit").textContent = confirmLabel;
+  $("#confirmDialog").showModal();
+}
+
+function closeConfirmDialog() {
+  state.pendingConfirmation = null;
+  if ($("#confirmDialog").open) {
+    $("#confirmDialog").close();
+  }
+}
+
+async function submitConfirmation(event) {
+  event.preventDefault();
+  const action = state.pendingConfirmation;
+  if (!action) return;
+  const submit = $("#confirmSubmit");
+  setButtonBusy(submit, true, "处理中");
+  try {
+    await action();
+    closeConfirmDialog();
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    setButtonBusy(submit, false);
+  }
 }
 
 function setButtonBusy(button, busy, busyText = "处理中") {
@@ -482,6 +524,23 @@ async function deleteStream(id, button) {
   }
 }
 
+function requestClearNotifications() {
+  const total = Number(state.eventPagination?.total || 0);
+  openConfirmDialog({
+    title: "清空通知记录",
+    message: `确定清空全部 ${total} 条通知记录吗？清空后无法恢复。`,
+    confirmLabel: "清空记录",
+    action: clearNotifications,
+  });
+}
+
+async function clearNotifications() {
+  const payload = await requestJSON("/api/notifications", { method: "DELETE" });
+  state.eventPage = 1;
+  showToast(`已清空 ${payload.deleted || 0} 条通知记录`);
+  await loadDashboard({ resetEvents: true });
+}
+
 async function openSettingsDialog() {
   try {
     const payload = await requestJSON("/api/settings");
@@ -565,10 +624,12 @@ document.addEventListener("click", (event) => {
     if (action === "toggle-password") togglePassword(actionTarget);
     if (action === "close-stream-dialog") $("#streamDialog").close();
     if (action === "close-settings-dialog") $("#settingsDialog").close();
+    if (action === "close-confirm-dialog") closeConfirmDialog();
     if (action === "check-all") checkAll(actionTarget);
     if (action === "check-stream") checkStream(actionTarget.dataset.id, actionTarget);
     if (action === "toggle-stream") toggleStream(actionTarget.dataset.id, actionTarget);
     if (action === "delete-stream") deleteStream(actionTarget.dataset.id, actionTarget);
+    if (action === "clear-notifications") requestClearNotifications();
     if (action === "test-notification") testNotification(actionTarget);
   }
 
@@ -602,9 +663,18 @@ document.addEventListener("click", (event) => {
 
 $("#streamForm").addEventListener("submit", submitStream);
 $("#settingsForm").addEventListener("submit", submitSettings);
+$("#confirmForm").addEventListener("submit", submitConfirmation);
+$("#confirmDialog").addEventListener("close", () => {
+  state.pendingConfirmation = null;
+});
 $("#loginForm").addEventListener("submit", submitLogin);
 $("#platformInput").addEventListener("change", updateRoomHint);
 $("#providerInput").addEventListener("change", updateProviderFields);
+$("#platformFilter").addEventListener("change", (event) => {
+  state.platform = event.target.value;
+  state.streamPage = 1;
+  loadDashboard();
+});
 $("#searchInput").addEventListener("input", (event) => {
   state.query = event.target.value.trim();
   state.streamPage = 1;

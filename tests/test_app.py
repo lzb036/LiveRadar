@@ -347,6 +347,59 @@ class AppApiTests(unittest.TestCase):
         self.assertTrue(settings["serverchan_sendkey_set"])
         self.assertNotIn("SCT-test-secret", str(settings))
 
+    def test_clear_notification_events(self):
+        headers = self.login_headers()
+        for index in range(2):
+            self.app.database.record_notification(
+                None,
+                event_type="started",
+                title=f"通知 {index}",
+                message="测试通知",
+                delivered=True,
+            )
+
+        response = self.app.handle_api(
+            "DELETE",
+            "/api/notifications",
+            None,
+            {},
+            headers,
+        )
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body["deleted"], 2)
+        records, pagination = self.app.database.list_notification_events_page()
+        self.assertEqual(records, [])
+        self.assertEqual(pagination["total"], 0)
+
+    def test_stream_api_filters_by_platform(self):
+        headers = self.login_headers()
+        self.app.database.add_stream(
+            "bilibili",
+            "31001",
+            "https://live.bilibili.com/31001",
+            "Bilibili 直播间",
+        )
+        self.app.database.add_stream(
+            "huya",
+            "31002",
+            "https://www.huya.com/31002",
+            "虎牙直播间",
+        )
+
+        response = self.app.handle_api(
+            "GET",
+            "/api/streams",
+            None,
+            {"page": ["1"], "filter": ["all"], "platform": ["huya"]},
+            headers,
+        )
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body["pagination"]["total"], 1)
+        self.assertEqual(len(response.body["items"]), 1)
+        self.assertEqual(response.body["items"][0]["platform"], "huya")
+
     def test_stream_api_returns_fixed_page_size(self):
         headers = self.login_headers()
         for index in range(21):

@@ -132,6 +132,13 @@ class LiveMonitorApp:
                 {"items": items, "pagination": pagination},
             )
 
+        if path == "/api/notifications" and method == "DELETE":
+            deleted = self.database.clear_notification_events()
+            return self._response(
+                200,
+                {"message": "通知记录已清空", "deleted": deleted},
+            )
+
         if path == "/api/notifications/test" and method == "POST":
             self.monitor.send_test_notification()
             return self._response(200, {"message": "测试通知已发送"})
@@ -185,11 +192,15 @@ class LiveMonitorApp:
         status_filter = (query.get("filter") or ["all"])[0]
         if status_filter not in {"all", "live", "offline", "attention"}:
             status_filter = "all"
+        platform_filter = (query.get("platform") or ["all"])[0]
+        if platform_filter not in {"all", "bilibili", "huya", "douyin"}:
+            platform_filter = "all"
         search_query = (query.get("query") or [""])[0]
         items, pagination = self.database.list_streams_page(
             page=page,
             page_size=PAGE_SIZE,
             status_filter=status_filter,
+            platform_filter=platform_filter,
             search_query=search_query,
         )
         return self._response(

@@ -206,10 +206,21 @@
               <button class="filter-button" data-filter="offline" role="tab">未开播</button>
               <button class="filter-button" data-filter="attention" role="tab">需留意</button>
             </div>
-            <label class="search-box">
-              <span class="sr-only">搜索直播间</span>
-              <input id="searchInput" type="search" placeholder="搜索主播或直播间" />
-            </label>
+            <div class="list-tools">
+              <label class="platform-filter">
+                <span class="sr-only">按平台筛选</span>
+                <select id="platformFilter" aria-label="按平台筛选">
+                  <option value="all">全部平台</option>
+                  <option value="bilibili">Bilibili</option>
+                  <option value="huya">虎牙</option>
+                  <option value="douyin">抖音</option>
+                </select>
+              </label>
+              <label class="search-box">
+                <span class="sr-only">搜索直播间</span>
+                <input id="searchInput" type="search" placeholder="搜索主播或直播间" />
+              </label>
+            </div>
           </div>
 
           <div class="table-frame">
@@ -241,6 +252,13 @@
             <div>
               <h2>最近通知</h2>
             </div>
+            <button
+              id="clearNotificationsButton"
+              class="button button-secondary button-danger"
+              type="button"
+              data-action="clear-notifications"
+              disabled
+            >清空记录</button>
           </div>
           <div id="eventList" class="event-list"></div>
           <div id="eventPagination" class="pagination" aria-label="通知记录分页"></div>
@@ -359,6 +377,25 @@
           <span class="modal-footer-spacer"></span>
           <button class="button button-secondary" type="button" data-action="close-settings-dialog">取消</button>
           <button class="button button-primary" type="submit" id="settingsSubmit">保存设置</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="confirmDialog" class="modal confirm-modal">
+      <form id="confirmForm" class="modal-form">
+        <div class="modal-header">
+          <div>
+            <span class="modal-label">CONFIRM</span>
+            <h2 id="confirmDialogTitle">确认操作</h2>
+          </div>
+          <button class="icon-button" type="button" data-action="close-confirm-dialog" title="关闭">×</button>
+        </div>
+        <div class="modal-body">
+          <p id="confirmDialogMessage" class="confirm-message"></p>
+        </div>
+        <div class="modal-footer">
+          <button class="button button-secondary" type="button" data-action="close-confirm-dialog">取消</button>
+          <button class="button button-danger" type="submit" id="confirmSubmit">确认</button>
         </div>
       </form>
     </dialog>

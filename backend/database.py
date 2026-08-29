@@ -299,6 +299,7 @@ class Database:
         page: int = 1,
         page_size: int = 20,
         status_filter: str = "all",
+        platform_filter: str = "all",
         search_query: str = "",
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         page = max(1, int(page))
@@ -314,6 +315,11 @@ class Database:
             clauses.append(
                 "(enabled = 0 OR status IN ('error', 'unknown'))"
             )
+
+        platform_filter = (platform_filter or "all").strip().lower()
+        if platform_filter in {"bilibili", "huya", "douyin"}:
+            clauses.append("platform = ?")
+            params.append(platform_filter)
 
         search_query = (search_query or "").strip()[:100]
         if search_query:
@@ -745,6 +751,12 @@ class Database:
             "total": total,
             "total_pages": (total + page_size - 1) // page_size,
         }
+
+    def clear_notification_events(self) -> int:
+        with self._lock:
+            with self._session() as connection:
+                cursor = connection.execute("DELETE FROM notification_events")
+                return int(cursor.rowcount)
 
     def metrics(self) -> dict[str, Any]:
         with self._lock:
