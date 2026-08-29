@@ -17,6 +17,8 @@
 
 抖音当前使用直播间公开页面探测状态，不依赖主播授权；建议同时填写主播主页链接。抖音页面无法确认状态时会显示“检查失败”，不会自动当作未开播。
 
+部署到宝塔后，可以通过独立子域名访问，例如 `https://liveradar.bugtuisan.com/`。原来的 `/liveradar/` 入口仍可保留。
+
 ## 启动
 
 当前目录下执行：
@@ -60,6 +62,7 @@ frontend/
 deploy/
   liveradar.service
   liveradar.nginx.conf
+  liveradar-subdomain.nginx.conf
 tests/
   test_platforms.py
 server.py         本地启动入口
