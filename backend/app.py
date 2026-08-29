@@ -284,7 +284,7 @@ class LiveMonitorApp:
             "monitor_interval_seconds": int(settings.get("monitor_interval_seconds", "60")),
             "notify_provider": settings.get("notify_provider", "none"),
             "notify_on_start": settings.get("notify_on_start", "1") == "1",
-            "notify_on_stop": settings.get("notify_on_stop", "0") == "1",
+            "notify_on_stop": settings.get("notify_on_stop", "1") == "1",
             "serverchan_sendkey_set": bool(settings.get("serverchan_sendkey")),
             "serverchan_sendkey_masked": mask_secret(settings.get("serverchan_sendkey", "")),
             "wecom_webhook_set": bool(settings.get("wecom_webhook")),

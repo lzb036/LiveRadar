@@ -14,7 +14,7 @@ DEFAULT_SETTINGS = {
     "serverchan_sendkey": "",
     "wecom_webhook": "",
     "notify_on_start": "1",
-    "notify_on_stop": "0",
+    "notify_on_stop": "1",
 }
 
 
