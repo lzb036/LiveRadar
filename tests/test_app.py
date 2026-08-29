@@ -55,6 +55,22 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertFalse(payload["authenticated"])
 
+    def test_authentication_survives_app_recreation(self):
+        headers = self.login_headers()
+        reloaded_app = LiveMonitorApp(Path(self.directory.name))
+
+        response = reloaded_app.handle_api(
+            "GET",
+            "/api/auth/me",
+            None,
+            {},
+            headers,
+        )
+
+        self.assertEqual(response.status, 200)
+        self.assertTrue(response.body["authenticated"])
+        self.assertEqual(response.body["username"], reloaded_app.auth.username)
+
     def test_authentication_accepts_lowercase_proxy_headers(self):
         response = self.app.handle_api(
             "POST",

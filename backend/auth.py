@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import os
 import secrets
-import threading
 import time
 from dataclasses import dataclass
 
@@ -31,8 +30,6 @@ class AuthService:
             or "liveradar"
         )
         self.configured_password = os.environ.get("LIVE_MONITOR_PASSWORD", "")
-        self._sessions: dict[str, tuple[str, float]] = {}
-        self._lock = threading.RLock()
         self.initial_credentials: InitialCredentials | None = None
 
     def bootstrap(self) -> InitialCredentials | None:
@@ -54,25 +51,29 @@ class AuthService:
 
     def create_session(self, username: str) -> str:
         token = secrets.token_urlsafe(32)
-        with self._lock:
-            self._purge_sessions()
-            self._sessions[token] = (username, time.time() + SESSION_TTL_SECONDS)
+        now = time.time()
+        self.database.purge_expired_auth_sessions(now)
+        self.database.create_auth_session(
+            hash_session_token(token),
+            username,
+            now + SESSION_TTL_SECONDS,
+        )
         return token
 
     def current_user(self, cookie_header: str) -> str | None:
         token = parse_cookie(cookie_header).get(SESSION_COOKIE)
         if not token:
             return None
-        with self._lock:
-            self._purge_sessions()
-            session = self._sessions.get(token)
-            return session[0] if session else None
+        username = self.database.get_auth_session(
+            hash_session_token(token),
+            time.time(),
+        )
+        return username if username == self.username else None
 
     def revoke_session(self, cookie_header: str) -> None:
         token = parse_cookie(cookie_header).get(SESSION_COOKIE)
         if token:
-            with self._lock:
-                self._sessions.pop(token, None)
+            self.database.delete_auth_session(hash_session_token(token))
 
     def session_cookie(self, token: str, *, secure: bool) -> str:
         attributes = [
@@ -97,17 +98,6 @@ class AuthService:
         if secure:
             attributes.append("Secure")
         return "; ".join(attributes)
-
-    def _purge_sessions(self) -> None:
-        now = time.time()
-        expired = [
-            token
-            for token, (_, expires_at) in self._sessions.items()
-            if expires_at <= now
-        ]
-        for token in expired:
-            self._sessions.pop(token, None)
-
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
@@ -137,6 +127,10 @@ def verify_password(password: str, encoded: str) -> bool:
     except (TypeError, ValueError, UnicodeError):
         return False
     return hmac.compare_digest(actual, expected)
+
+
+def hash_session_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def parse_cookie(header: str) -> dict[str, str]:

@@ -96,6 +96,18 @@ class Database:
                         updated_at TEXT NOT NULL
                     );
 
+                    CREATE TABLE IF NOT EXISTS auth_sessions (
+                        token_hash TEXT PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        expires_at REAL NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(username) REFERENCES auth_users(username)
+                            ON DELETE CASCADE
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires
+                        ON auth_sessions(expires_at);
+
                     CREATE TABLE IF NOT EXISTS notification_events (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         stream_id INTEGER,
@@ -173,6 +185,65 @@ class Database:
                         "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
                         (key, value),
                     )
+
+    def create_auth_session(
+        self,
+        token_hash: str,
+        username: str,
+        expires_at: float,
+    ) -> None:
+        with self._lock:
+            with self._session() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO auth_sessions(
+                        token_hash, username, expires_at, created_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (token_hash, username, expires_at, utc_now()),
+                )
+
+    def get_auth_session(
+        self,
+        token_hash: str,
+        now: float,
+    ) -> str | None:
+        with self._lock:
+            with self._session() as connection:
+                row = connection.execute(
+                    """
+                    SELECT username, expires_at
+                    FROM auth_sessions
+                    WHERE token_hash = ?
+                    """,
+                    (token_hash,),
+                ).fetchone()
+                if row is None:
+                    return None
+                if float(row["expires_at"]) <= now:
+                    connection.execute(
+                        "DELETE FROM auth_sessions WHERE token_hash = ?",
+                        (token_hash,),
+                    )
+                    return None
+                return str(row["username"])
+
+    def delete_auth_session(self, token_hash: str) -> None:
+        with self._lock:
+            with self._session() as connection:
+                connection.execute(
+                    "DELETE FROM auth_sessions WHERE token_hash = ?",
+                    (token_hash,),
+                )
+
+    def purge_expired_auth_sessions(self, now: float) -> None:
+        with self._lock:
+            with self._session() as connection:
+                connection.execute(
+                    "DELETE FROM auth_sessions WHERE expires_at <= ?",
+                    (now,),
+                )
 
     def get_auth_user(self, username: str) -> str | None:
         with self._lock:
