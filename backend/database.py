@@ -69,6 +69,9 @@ class Database:
                         cover_url TEXT NOT NULL DEFAULT '',
                         status TEXT NOT NULL DEFAULT 'unknown',
                         error_message TEXT NOT NULL DEFAULT '',
+                        live_session_active INTEGER NOT NULL DEFAULT 0,
+                        start_notification_sent INTEGER NOT NULL DEFAULT 0,
+                        stop_notification_sent INTEGER NOT NULL DEFAULT 0,
                         enabled INTEGER NOT NULL DEFAULT 1,
                         last_checked_at TEXT,
                         last_live_at TEXT,
@@ -116,11 +119,55 @@ class Database:
                 for column, definition in (
                     ("anchor_key", "TEXT NOT NULL DEFAULT ''"),
                     ("profile_url", "TEXT NOT NULL DEFAULT ''"),
+                    ("live_session_active", "INTEGER NOT NULL DEFAULT 0"),
+                    ("start_notification_sent", "INTEGER NOT NULL DEFAULT 0"),
+                    ("stop_notification_sent", "INTEGER NOT NULL DEFAULT 0"),
                 ):
                     if column not in existing_columns:
                         connection.execute(
                             f"ALTER TABLE streams ADD COLUMN {column} {definition}"
                         )
+                connection.execute(
+                    """
+                    UPDATE streams
+                    SET live_session_active = 1,
+                        start_notification_sent = 1,
+                        stop_notification_sent = 0
+                    WHERE status = 'live'
+                      AND live_session_active = 0
+                    """
+                )
+                connection.execute(
+                    """
+                    UPDATE streams
+                    SET live_session_active = 1,
+                        start_notification_sent = 1,
+                        stop_notification_sent = 0
+                    WHERE status = 'error'
+                      AND live_session_active = 0
+                      AND id IN (
+                        SELECT latest.stream_id
+                        FROM notification_events AS latest
+                        WHERE latest.event_type = 'started'
+                          AND latest.delivered = 1
+                          AND latest.id = (
+                            SELECT MAX(candidate.id)
+                            FROM notification_events AS candidate
+                            WHERE candidate.stream_id = latest.stream_id
+                              AND candidate.event_type = 'started'
+                              AND candidate.delivered = 1
+                          )
+                          AND NOT EXISTS (
+                            SELECT 1
+                            FROM notification_events AS stopped
+                            WHERE stopped.stream_id = latest.stream_id
+                              AND stopped.event_type = 'stopped'
+                              AND stopped.delivered = 1
+                              AND stopped.id > latest.id
+                          )
+                    )
+                    """
+                )
                 for key, value in DEFAULT_SETTINGS.items():
                     connection.execute(
                         "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
@@ -288,6 +335,9 @@ class Database:
                             cover_url = '',
                             status = 'unknown',
                             error_message = '',
+                            live_session_active = 0,
+                            start_notification_sent = 0,
+                            stop_notification_sent = 0,
                             last_checked_at = NULL,
                             last_live_at = NULL,
                             last_offline_at = NULL,
@@ -307,6 +357,38 @@ class Database:
                     )
             except sqlite3.IntegrityError as exc:
                 raise DuplicateStreamError("这个平台的直播间已经添加过了") from exc
+        return self.get_stream(stream_id)
+
+    def update_notification_state(
+        self,
+        stream_id: int,
+        *,
+        live_session_active: bool | None = None,
+        start_notification_sent: bool | None = None,
+        stop_notification_sent: bool | None = None,
+    ) -> dict[str, Any] | None:
+        changes: list[str] = []
+        values: list[Any] = []
+        for column, value in (
+            ("live_session_active", live_session_active),
+            ("start_notification_sent", start_notification_sent),
+            ("stop_notification_sent", stop_notification_sent),
+        ):
+            if value is not None:
+                changes.append(f"{column} = ?")
+                values.append(int(value))
+        if not changes:
+            return self.get_stream(stream_id)
+
+        changes.append("updated_at = ?")
+        values.append(utc_now())
+        values.append(stream_id)
+        with self._lock:
+            with self._session() as connection:
+                connection.execute(
+                    f"UPDATE streams SET {', '.join(changes)} WHERE id = ?",
+                    values,
+                )
         return self.get_stream(stream_id)
 
     def delete_stream(self, stream_id: int) -> bool:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -212,36 +213,50 @@ class HuyaAdapter:
         if reference.platform != "huya":
             raise PlatformError("虎牙适配器收到的不是虎牙房间")
 
-        html = http_get(reference.room_url)
-        room_data = _extract_json_assignment(html, "TT_ROOM_DATA")
-        profile_info = _extract_json_assignment(html, "TT_PROFILE_INFO")
-        raw_is_on = room_data.get("isOn")
-        is_on = raw_is_on is True or str(raw_is_on).lower() in {"1", "true"}
-        if not is_on:
-            is_on = bool(re.search(r'class="[^"]*liveStatus-on', html))
+        last_error = "虎牙页面未返回直播间信息"
+        for attempt in range(2):
+            html = http_get(reference.room_url)
+            room_data = _extract_json_assignment(html, "TT_ROOM_DATA")
+            profile_info = _extract_json_assignment(html, "TT_PROFILE_INFO")
+            raw_is_on = room_data.get("isOn")
+            is_on = raw_is_on is True or str(raw_is_on).lower() in {"1", "true"}
+            if not is_on:
+                is_on = bool(re.search(r'class="[^"]*liveStatus-on', html))
 
-        anchor_name = str(
-            profile_info.get("nick")
-            or room_data.get("nick")
-            or room_data.get("gameHostName")
-            or ""
-        )
-        room_id = str(
-            room_data.get("profileRoom")
-            or profile_info.get("profileRoom")
-            or room_data.get("id")
-            or ""
-        )
-        if not anchor_name and not room_id:
-            raise PlatformError("虎牙直播间不存在或页面无法识别")
+            anchor_name = str(
+                profile_info.get("nick")
+                or room_data.get("nick")
+                or room_data.get("gameHostName")
+                or ""
+            )
+            room_id = str(
+                room_data.get("profileRoom")
+                or profile_info.get("profileRoom")
+                or room_data.get("id")
+                or ""
+            )
+            if anchor_name or room_id:
+                return RoomSnapshot(
+                    status="live" if is_on else "offline",
+                    anchor_name=anchor_name,
+                    title=str(
+                        room_data.get("roomName")
+                        or room_data.get("introduction")
+                        or ""
+                    ),
+                    cover_url=str(
+                        room_data.get("screenshot")
+                        or room_data.get("previewUrl")
+                        or ""
+                    ),
+                    room_id=room_id or reference.room_key,
+                )
 
-        return RoomSnapshot(
-            status="live" if is_on else "offline",
-            anchor_name=anchor_name,
-            title=str(room_data.get("roomName") or room_data.get("introduction") or ""),
-            cover_url=str(room_data.get("screenshot") or room_data.get("previewUrl") or ""),
-            room_id=room_id or reference.room_key,
-        )
+            last_error = "虎牙页面暂时无法解析直播间信息"
+            if attempt == 0:
+                time.sleep(0.5)
+
+        raise PlatformError(last_error)
 
 
 def _normalise_douyin_html(source: str) -> str:

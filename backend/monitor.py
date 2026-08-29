@@ -82,6 +82,7 @@ class MonitorService:
                     profile_url=stream.get("profile_url", ""),
                 )
                 snapshot = fetch_room(reference)
+                was_checked = bool(stream.get("last_checked_at"))
                 updated, previous_status = self.database.record_check(
                     stream_id,
                     status=snapshot.status,
@@ -91,12 +92,15 @@ class MonitorService:
                     anchor_key=snapshot.anchor_key or None,
                     profile_url=snapshot.profile_url or None,
                 )
-                if (
-                    updated
-                    and allow_notify
-                    and previous_status != snapshot.status
-                ):
-                    self._notify_transition(updated, previous_status, snapshot)
+                if updated:
+                    self._process_notification_state(
+                        stream=stream,
+                        updated=updated,
+                        previous_status=previous_status,
+                        snapshot=snapshot,
+                        was_checked=was_checked,
+                        allow_notify=allow_notify,
+                    )
                 return updated
             except (PlatformError, ValueError, TypeError) as exc:
                 updated, _ = self.database.record_check(
@@ -119,35 +123,104 @@ class MonitorService:
         message = f"测试发送成功。时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         send_notification(settings, title, message)
 
-    def _notify_transition(
+    def _process_notification_state(
         self,
+        *,
         stream: dict[str, Any],
+        updated: dict[str, Any],
         previous_status: str,
         snapshot: RoomSnapshot,
+        was_checked: bool,
+        allow_notify: bool,
     ) -> None:
         settings = self.database.get_settings()
-        started = snapshot.status == "live" and previous_status in {
-            "offline",
-            "replay",
-            "error",
-        }
-        stopped = (
-            previous_status == "live"
-            and snapshot.status in {"offline", "replay"}
-        )
-        if started and settings.get("notify_on_start") == "1":
-            event_type = "started"
-            title = f"{self._stream_name(stream)} 开播了"
-            message = self._message_for(stream, snapshot, "已检测到直播开始")
-        elif stopped and settings.get("notify_on_stop") == "1":
-            event_type = "stopped"
-            title = f"{self._stream_name(stream)} 已下播"
-            message = self._message_for(stream, snapshot, "直播状态已结束")
-        else:
+        session_active = bool(stream.get("live_session_active"))
+        start_sent = bool(stream.get("start_notification_sent"))
+        stop_sent = bool(stream.get("stop_notification_sent"))
+
+        if snapshot.status == "live":
+            should_start = (
+                not session_active
+                and allow_notify
+                and was_checked
+                and previous_status in {"offline", "replay"}
+            )
+            if not session_active:
+                self.database.update_notification_state(
+                    stream["id"],
+                    live_session_active=True,
+                    start_notification_sent=not should_start,
+                    stop_notification_sent=False,
+                )
+                session_active = True
+                start_sent = not should_start
+                stop_sent = False
+
+            if (
+                session_active
+                and not start_sent
+                and allow_notify
+                and settings.get("notify_on_start") == "1"
+            ):
+                delivered = self._deliver_transition(
+                    stream,
+                    snapshot,
+                    event_type="started",
+                    title=f"{self._stream_name(stream)} 开播了",
+                    message=self._message_for(
+                        stream, snapshot, "已检测到直播开始"
+                    ),
+                )
+                if delivered:
+                    self.database.update_notification_state(
+                        stream["id"],
+                        start_notification_sent=True,
+                    )
             return
 
+        if snapshot.status not in {"offline", "replay"} or not session_active:
+            return
+
+        if not allow_notify:
+            self.database.update_notification_state(
+                stream["id"],
+                live_session_active=False,
+                start_notification_sent=False,
+                stop_notification_sent=False,
+            )
+            return
+
+        if settings.get("notify_on_stop") == "1" and not stop_sent:
+            delivered = self._deliver_transition(
+                stream,
+                snapshot,
+                event_type="stopped",
+                title=f"{self._stream_name(stream)} 已下播",
+                message=self._message_for(
+                    stream, snapshot, "直播状态已结束"
+                ),
+            )
+            if not delivered:
+                return
+
+        self.database.update_notification_state(
+            stream["id"],
+            live_session_active=False,
+            start_notification_sent=False,
+            stop_notification_sent=False,
+        )
+
+    def _deliver_transition(
+        self,
+        stream: dict[str, Any],
+        snapshot: RoomSnapshot,
+        *,
+        event_type: str,
+        title: str,
+        message: str,
+    ) -> bool:
         try:
-            send_notification(settings, title, message)
+            send_notification(self.database.get_settings(), title, message)
         except NotificationError as exc:
             self.database.record_notification(
                 stream["id"],
@@ -157,14 +230,16 @@ class MonitorService:
                 delivered=False,
                 error_message=str(exc),
             )
-        else:
-            self.database.record_notification(
-                stream["id"],
-                event_type=event_type,
-                title=title,
-                message=message,
-                delivered=True,
-            )
+            return False
+
+        self.database.record_notification(
+            stream["id"],
+            event_type=event_type,
+            title=title,
+            message=message,
+            delivered=True,
+        )
+        return True
 
     @staticmethod
     def _stream_name(stream: dict[str, Any]) -> str:

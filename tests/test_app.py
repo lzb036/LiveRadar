@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend.app import LiveMonitorApp
-from backend.platforms import RoomSnapshot
+from backend.platforms import PlatformError, RoomSnapshot
 
 
 class AppApiTests(unittest.TestCase):
@@ -177,6 +177,120 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertTrue(events[0]["delivered"])
         self.assertEqual(events[0]["event_type"], "started")
+
+    @patch("backend.monitor.send_notification")
+    @patch("backend.monitor.fetch_room")
+    def test_transient_check_failure_does_not_repeat_start(
+        self, mock_fetch, mock_send
+    ):
+        headers = self.login_headers()
+        mock_fetch.return_value = RoomSnapshot(
+            status="offline",
+            room_id="7788",
+        )
+        _, payload = self.app.handle_api(
+            "POST",
+            "/api/streams",
+            {
+                "platform": "huya",
+                "room_url": "7788",
+                "display_name": "稳定测试",
+            },
+            {},
+            headers,
+        )
+        stream_id = payload["stream"]["id"]
+        mock_fetch.return_value = RoomSnapshot(status="live", room_id="7788")
+        self.app.handle_api(
+            "POST",
+            f"/api/streams/{stream_id}/check",
+            None,
+            {},
+            headers,
+        )
+        mock_fetch.side_effect = PlatformError("虎牙页面暂时无法解析直播间信息")
+        self.app.handle_api(
+            "POST",
+            f"/api/streams/{stream_id}/check",
+            None,
+            {},
+            headers,
+        )
+        mock_fetch.side_effect = None
+        mock_fetch.return_value = RoomSnapshot(status="live", room_id="7788")
+        self.app.handle_api(
+            "POST",
+            f"/api/streams/{stream_id}/check",
+            None,
+            {},
+            headers,
+        )
+        self.assertEqual(mock_send.call_count, 1)
+        events = self.app.database.list_notification_events()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["event_type"], "started")
+
+    @patch("backend.monitor.send_notification")
+    @patch("backend.monitor.fetch_room")
+    def test_offline_checks_do_not_repeat_stop(
+        self, mock_fetch, mock_send
+    ):
+        headers = self.login_headers()
+        status, _ = self.app.handle_api(
+            "PUT",
+            "/api/settings",
+            {
+                "notify_provider": "serverchan",
+                "notify_on_start": True,
+                "notify_on_stop": True,
+                "monitor_interval_seconds": 60,
+            },
+            {},
+            headers,
+        )
+        self.assertEqual(status, 200)
+        mock_fetch.return_value = RoomSnapshot(status="offline", room_id="7788")
+        _, payload = self.app.handle_api(
+            "POST",
+            "/api/streams",
+            {
+                "platform": "huya",
+                "room_url": "7788",
+                "display_name": "下播测试",
+            },
+            {},
+            headers,
+        )
+        stream_id = payload["stream"]["id"]
+        mock_fetch.return_value = RoomSnapshot(status="live", room_id="7788")
+        self.app.handle_api(
+            "POST",
+            f"/api/streams/{stream_id}/check",
+            None,
+            {},
+            headers,
+        )
+        mock_fetch.return_value = RoomSnapshot(status="offline", room_id="7788")
+        self.app.handle_api(
+            "POST",
+            f"/api/streams/{stream_id}/check",
+            None,
+            {},
+            headers,
+        )
+        self.app.handle_api(
+            "POST",
+            f"/api/streams/{stream_id}/check",
+            None,
+            {},
+            headers,
+        )
+        self.assertEqual(mock_send.call_count, 2)
+        events = self.app.database.list_notification_events()
+        self.assertCountEqual(
+            [event["event_type"] for event in events],
+            ["started", "stopped"],
+        )
 
     def test_settings_do_not_expose_secrets(self):
         headers = self.login_headers()
