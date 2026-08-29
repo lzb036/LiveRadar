@@ -49,9 +49,11 @@ class LiveMonitorApp:
         headers: dict[str, str] | None = None,
     ) -> ApiResponse:
         body = payload or {}
-        request_headers = headers or {}
-        cookie_header = request_headers.get("Cookie", "")
-        secure_cookie = request_headers.get("X-Forwarded-Proto", "http") == "https"
+        request_headers = {
+            str(key).lower(): value for key, value in (headers or {}).items()
+        }
+        cookie_header = request_headers.get("cookie", "")
+        secure_cookie = request_headers.get("x-forwarded-proto", "http") == "https"
 
         public_paths = {
             "/api/health",

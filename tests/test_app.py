@@ -55,6 +55,29 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertFalse(payload["authenticated"])
 
+    def test_authentication_accepts_lowercase_proxy_headers(self):
+        response = self.app.handle_api(
+            "POST",
+            "/api/auth/login",
+            {
+                "username": self.app.auth.username,
+                "password": self.app.auth.initial_credentials.password,
+            },
+            {},
+            {"cookie": "", "x-forwarded-proto": "https"},
+        )
+        self.assertEqual(response.status, 200)
+        self.assertIn("Secure", response.headers["Set-Cookie"])
+        cookie = response.headers["Set-Cookie"].split(";", 1)[0]
+        protected = self.app.handle_api(
+            "GET",
+            "/api/streams",
+            None,
+            {},
+            {"cookie": cookie, "x-forwarded-proto": "https"},
+        )
+        self.assertEqual(protected.status, 200)
+
     @patch("backend.monitor.fetch_room")
     def test_create_update_and_delete_stream(self, mock_fetch):
         headers = self.login_headers()
