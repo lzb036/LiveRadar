@@ -783,28 +783,66 @@ a {
   white-space: nowrap;
 }
 
+.platform-badge {
+  gap: 7px;
+  padding: 4px 9px 4px 5px;
+}
+
+.platform-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  place-items: center;
+  color: var(--surface);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .platform-bilibili {
-  color: var(--pink);
-  background: var(--pink-soft);
+  color: #0088b5;
+  background: #e3f7fc;
+}
+
+.platform-icon-bilibili {
+  color: #ffffff;
+  background: #00aeec;
+  font-size: 11px;
 }
 
 .platform-huya {
-  color: var(--orange);
-  background: var(--orange-soft);
+  color: #a66500;
+  background: #fff0d3;
+}
+
+.platform-icon-huya {
+  color: #3f2a00;
+  background: #ffb000;
+  font-size: 10px;
 }
 
 .platform-douyin {
-  color: #4e5968;
+  color: #343c47;
   background: #e9edf2;
 }
 
+.platform-icon-douyin {
+  color: #ffffff;
+  background: #171a1d;
+  border-radius: 50%;
+  box-shadow: -1px 0 0 #fe2c55, 1px 0 0 #25f4ee;
+  font-size: 10px;
+}
+
 .status-live {
-  color: var(--live);
-  background: var(--live-soft);
+  color: var(--green);
+  background: var(--green-soft);
 }
 
 .status-live .status-dot {
-  background: var(--live);
+  background: var(--green);
 }
 
 .status-offline,

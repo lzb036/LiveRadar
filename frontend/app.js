@@ -19,6 +19,7 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 const platformLabels = { bilibili: "Bilibili", huya: "虎牙", douyin: "抖音" };
+const platformMarks = { bilibili: "B", huya: "虎", douyin: "抖" };
 const currentPath = window.location.pathname;
 const appBasePath = currentPath === "/liveradar" || currentPath.startsWith("/liveradar/")
   ? "/liveradar"
@@ -145,7 +146,10 @@ function renderStreams() {
             </div>
           </td>
           <td>
-            <span class="platform-badge platform-${platform}">${escapeHtml(platformLabels[stream.platform])}</span>
+            <span class="platform-badge platform-${platform}">
+              <span class="platform-icon platform-icon-${platform}" aria-hidden="true">${platformMarks[platform]}</span>
+              <span>${escapeHtml(platformLabels[platform])}</span>
+            </span>
           </td>
           <td>
             <span class="status-badge status-${meta.key}">
