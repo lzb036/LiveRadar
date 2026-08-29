@@ -94,6 +94,31 @@ class PlatformAdapterTests(unittest.TestCase):
             HuyaAdapter().fetch(reference)
 
     @patch("backend.platforms.http_get")
+    def test_huya_falls_back_to_full_room_page(self, mock_get):
+        full_page = """
+            <body class="liveStatus-on">
+              <script>
+                var TT_ROOM_DATA = {"isOn":true,"id":1199630339535,
+                  "profileRoom":149721,"roomName":"GENG大战T1"};
+                var TT_PROFILE_INFO = {"nick":"神枪小子","profileRoom":149721};
+              </script>
+            </body>
+        """
+        mock_get.side_effect = [
+            '<html><body>degraded page</body></html>',
+            full_page,
+        ]
+        reference = parse_room_reference("shenqiangxiaozi", "huya")
+        snapshot = HuyaAdapter().fetch(reference)
+        self.assertEqual(snapshot.status, "live")
+        self.assertEqual(snapshot.anchor_name, "神枪小子")
+        self.assertEqual(snapshot.room_id, "149721")
+        self.assertEqual(
+            mock_get.call_args_list[1].args[0],
+            "https://www.huya.com/shenqiangxiaozi?hyaction=home",
+        )
+
+    @patch("backend.platforms.http_get")
     def test_douyin_live_snapshot(self, mock_get):
         mock_get.return_value = """
             <script>

@@ -214,8 +214,12 @@ class HuyaAdapter:
             raise PlatformError("虎牙适配器收到的不是虎牙房间")
 
         last_error = "虎牙页面未返回直播间信息"
-        for attempt in range(2):
-            html = http_get(reference.room_url)
+        candidate_urls = [
+            reference.room_url,
+            _with_hyaction_home(reference.room_url),
+        ]
+        for url_index, url in enumerate(candidate_urls):
+            html = http_get(url)
             room_data = _extract_json_assignment(html, "TT_ROOM_DATA")
             profile_info = _extract_json_assignment(html, "TT_PROFILE_INFO")
             raw_is_on = room_data.get("isOn")
@@ -253,10 +257,15 @@ class HuyaAdapter:
                 )
 
             last_error = "虎牙页面暂时无法解析直播间信息"
-            if attempt == 0:
+            if url_index == 0:
                 time.sleep(0.5)
 
         raise PlatformError(last_error)
+
+
+def _with_hyaction_home(url: str) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}hyaction=home"
 
 
 def _normalise_douyin_html(source: str) -> str:
