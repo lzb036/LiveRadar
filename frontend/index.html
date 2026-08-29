@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f6f2" />
+    <title>开播雷达</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!--
+      THESIS: 让多平台主播状态在一个安静、可扫描的工作台里保持可见。
+      OWN-WORLD: 温和骨白画布、炭黑文字、细分隔线，以平台色只表达状态和来源。
+      STORY: 用户添加直播间，查看统一状态，在状态切换时通过微信收到一次通知。
+      FIRST VIEWPORT: 顶部先显示监测总览，主区域直接呈现主播表格，右上角随时可添加或配置通知。
+      FORM: 操作型监测工作台，优先保证批量扫描、异常辨识和低打扰操作。
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+    -->
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="开播雷达首页">
+          <span class="brand-mark">LM</span>
+          <span class="brand-name">开播雷达</span>
+        </a>
+        <div class="topbar-actions">
+          <span class="connection-state"><span class="connection-dot"></span>本机运行</span>
+          <button class="button button-secondary" data-action="settings">通知设置</button>
+          <button class="button button-primary" data-action="add-stream">
+            <span aria-hidden="true">+</span>添加直播间
+          </button>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <section class="overview">
+          <div class="overview-copy">
+            <h1>今天谁在直播</h1>
+              <p>把 Bilibili、虎牙和抖音的关注列表放到同一张桌面上，开播时再提醒你。</p>
+          </div>
+          <div class="scan-status" aria-live="polite">
+            <span class="scan-status-label">自动扫描</span>
+            <strong id="scanInterval">每 60 秒</strong>
+            <span class="scan-status-time" id="lastScan">尚未检查</span>
+          </div>
+        </section>
+
+        <section class="metric-strip" aria-label="监测概览">
+          <div class="metric">
+            <span class="metric-label">监测中</span>
+            <strong id="metricTotal">0</strong>
+            <span class="metric-detail" id="metricEnabled">0 个已启用</span>
+          </div>
+          <div class="metric metric-live">
+            <span class="metric-label">正在直播</span>
+            <strong id="metricLive">0</strong>
+            <span class="metric-detail">等待开播提醒</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">未开播</span>
+            <strong id="metricOffline">0</strong>
+            <span class="metric-detail">状态正常</span>
+          </div>
+          <div class="metric metric-error">
+            <span class="metric-label">需要留意</span>
+            <strong id="metricErrors">0</strong>
+            <span class="metric-detail">检查失败或待检查</span>
+          </div>
+        </section>
+
+        <section class="watchlist-section">
+          <div class="section-heading">
+            <div>
+              <h2>我的直播间</h2>
+              <p>状态变化只通知一次，手动刷新不会触发重复通知。</p>
+            </div>
+            <button class="button button-secondary" data-action="check-all">
+              立即检查全部
+            </button>
+          </div>
+
+          <div class="list-toolbar">
+            <div class="filter-group" role="tablist" aria-label="直播间筛选">
+              <button class="filter-button is-active" data-filter="all" role="tab">全部</button>
+              <button class="filter-button" data-filter="live" role="tab">直播中</button>
+              <button class="filter-button" data-filter="offline" role="tab">未开播</button>
+              <button class="filter-button" data-filter="attention" role="tab">需留意</button>
+            </div>
+            <label class="search-box">
+              <span class="sr-only">搜索直播间</span>
+              <input id="searchInput" type="search" placeholder="搜索主播或直播间" />
+            </label>
+          </div>
+
+          <div class="table-frame">
+            <table class="stream-table">
+              <thead>
+                <tr>
+                  <th scope="col">直播间</th>
+                  <th scope="col">平台</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">最近检查</th>
+                  <th scope="col">直播标题</th>
+                  <th scope="col"><span class="sr-only">操作</span></th>
+                </tr>
+              </thead>
+              <tbody id="streamRows"></tbody>
+            </table>
+            <div id="emptyState" class="empty-state">
+              <span class="empty-mark">+</span>
+              <h3>还没有添加直播间</h3>
+              <p>先添加一个 Bilibili、虎牙或抖音直播间，监测列表会从这里开始。</p>
+              <button class="button button-primary" data-action="add-stream">添加第一个直播间</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="activity-section">
+          <div class="section-heading section-heading-compact">
+            <div>
+              <h2>最近通知</h2>
+              <p>记录开播和下播通知是否送达。</p>
+            </div>
+          </div>
+          <div id="eventList" class="event-list"></div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>LiveRadar</span>
+        <span>状态数据保存在本机</span>
+      </footer>
+    </div>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <dialog id="streamDialog" class="modal">
+      <form id="streamForm" class="modal-form">
+        <div class="modal-header">
+          <div>
+            <span class="modal-label" id="streamDialogLabel">WATCHLIST</span>
+            <h2 id="streamDialogTitle">添加直播间</h2>
+          </div>
+          <button class="icon-button" type="button" data-action="close-stream-dialog" title="关闭">×</button>
+        </div>
+        <div class="modal-body">
+          <label class="field">
+            <span>平台</span>
+            <select id="platformInput" name="platform">
+              <option value="bilibili">Bilibili</option>
+              <option value="huya">虎牙</option>
+              <option value="douyin">抖音</option>
+            </select>
+          </label>
+          <label class="field">
+            <span id="roomInputLabel">直播间链接或房间 ID</span>
+            <input
+              id="roomInput"
+              name="room_url"
+              required
+              autocomplete="off"
+              placeholder="例如：123456"
+            />
+            <small id="roomInputHint">支持 live.bilibili.com/数字房间ID，或直接填写数字 ID。</small>
+          </label>
+          <label id="profileUrlField" class="field is-hidden">
+            <span>抖音主播主页链接 <em>推荐</em></span>
+            <input
+              id="profileUrlInput"
+              name="profile_url"
+              autocomplete="off"
+              placeholder="例如：https://www.douyin.com/user/..."
+            />
+            <small>用于长期识别主播；直播间链接负责读取当前状态。</small>
+          </label>
+          <label class="field">
+            <span>自定义名称 <em>可选</em></span>
+            <input
+              id="displayNameInput"
+              name="display_name"
+              maxlength="100"
+              autocomplete="off"
+              placeholder="例如：晚间固定关注"
+            />
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button class="button button-secondary" type="button" data-action="close-stream-dialog">取消</button>
+          <button class="button button-primary" type="submit" id="streamSubmit">添加并检查</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="settingsDialog" class="modal">
+      <form id="settingsForm" class="modal-form">
+        <div class="modal-header">
+          <div>
+            <span class="modal-label">DELIVERY</span>
+            <h2>通知设置</h2>
+          </div>
+          <button class="icon-button" type="button" data-action="close-settings-dialog" title="关闭">×</button>
+        </div>
+        <div class="modal-body">
+          <label class="field">
+            <span>检查间隔</span>
+            <div class="input-with-suffix">
+              <input id="intervalInput" name="monitor_interval_seconds" type="number" min="15" max="3600" step="1" required />
+              <span>秒</span>
+            </div>
+            <small>建议保持在 30 到 120 秒之间。</small>
+          </label>
+          <label class="field">
+            <span>微信通知方式</span>
+            <select id="providerInput" name="notify_provider">
+              <option value="serverchan">微信（Server酱）</option>
+              <option value="wecom">企业微信机器人</option>
+              <option value="none">暂不通知</option>
+            </select>
+          </label>
+          <div id="serverchanFields" class="provider-fields">
+            <label class="field">
+              <span>Server酱 SendKey</span>
+              <input id="serverchanInput" name="serverchan_sendkey" type="password" autocomplete="new-password" placeholder="留空表示保留已保存的 Key" />
+              <small id="serverchanState"></small>
+            </label>
+          </div>
+          <div id="wecomFields" class="provider-fields is-hidden">
+            <label class="field">
+              <span>企业微信机器人 Webhook</span>
+              <input id="wecomInput" name="wecom_webhook" type="password" autocomplete="new-password" placeholder="留空表示保留已保存的 Webhook" />
+              <small id="wecomState"></small>
+            </label>
+          </div>
+          <div class="switch-list">
+            <label class="switch-row">
+              <span>
+                <strong>开播通知</strong>
+                <small>主播从未开播切换为直播中时通知</small>
+              </span>
+              <input id="notifyStartInput" type="checkbox" />
+            </label>
+            <label class="switch-row">
+              <span>
+                <strong>下播通知</strong>
+                <small>主播从直播中切换为未开播时通知</small>
+              </span>
+              <input id="notifyStopInput" type="checkbox" />
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="button button-secondary" type="button" data-action="test-notification">发送测试通知</button>
+          <span class="modal-footer-spacer"></span>
+          <button class="button button-secondary" type="button" data-action="close-settings-dialog">取消</button>
+          <button class="button button-primary" type="submit" id="settingsSubmit">保存设置</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
