@@ -107,6 +107,27 @@ function switchView(view, updateHash = true) {
   }
 }
 
+function streamOpenUrl(stream) {
+  if (
+    stream.platform === "douyin"
+    && stream.status !== "live"
+    && stream.profile_url
+  ) {
+    return stream.profile_url;
+  }
+  return stream.room_url;
+}
+
+function streamOpenLabel(stream) {
+  return (
+    stream.platform === "douyin"
+    && stream.status !== "live"
+    && stream.profile_url
+  )
+    ? "主页"
+    : "打开";
+}
+
 function renderStreams() {
   const tbody = $("#streamRows");
   const emptyState = $("#emptyState");
@@ -122,6 +143,8 @@ function renderStreams() {
       const detail = stream.anchor_name && stream.display_name
         ? stream.anchor_name
         : `房间 ID ${stream.room_key}`;
+      const openUrl = streamOpenUrl(stream);
+      const openLabel = streamOpenLabel(stream);
       const error = meta.key === "error"
         ? `<span class="row-error">${escapeHtml(meta.detail)}</span>`
         : "";
@@ -146,7 +169,7 @@ function renderStreams() {
           <td class="title-cell" title="${escapeHtml(title)}">${escapeHtml(title)}</td>
           <td>
             <div class="row-actions">
-              <a class="table-action" href="${escapeHtml(stream.room_url)}" target="_blank" rel="noreferrer">打开</a>
+              <a class="table-action" href="${escapeHtml(openUrl)}" target="_blank" rel="noreferrer">${openLabel}</a>
               <button class="table-action" data-action="edit-stream" data-id="${stream.id}">编辑</button>
               <button class="table-action" data-action="check-stream" data-id="${stream.id}">检查</button>
               <button class="table-action" data-action="toggle-stream" data-id="${stream.id}">${stream.enabled ? "停用" : "启用"}</button>
