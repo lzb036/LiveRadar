@@ -115,6 +115,35 @@
           <span class="brand-mark">LM</span>
           <span class="brand-name">开播雷达</span>
         </a>
+        <nav class="topnav-tabs" role="tablist" aria-label="主导航">
+          <button
+            class="topnav-tab is-active"
+            id="tab-home"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="view-home"
+            data-view-tab="home"
+          >首页</button>
+          <button
+            class="topnav-tab"
+            id="tab-rooms"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="view-rooms"
+            data-view-tab="rooms"
+          >直播间</button>
+          <button
+            class="topnav-tab"
+            id="tab-notifications"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="view-notifications"
+            data-view-tab="notifications"
+          >通知记录</button>
+        </nav>
         <div class="topbar-actions">
           <span class="connection-state"><span class="connection-dot"></span>本机运行</span>
           <button class="button button-secondary" data-action="settings">通知设置</button>
@@ -126,7 +155,7 @@
       </header>
 
       <main class="main-content">
-        <section class="overview">
+        <section id="view-home" class="view-section overview" data-view-section="home" role="tabpanel" aria-labelledby="tab-home">
           <div class="overview-copy">
             <h1>今天谁在直播</h1>
               <p>把 Bilibili、虎牙和抖音的关注列表放到同一张桌面上，开播时再提醒你。</p>
@@ -138,7 +167,7 @@
           </div>
         </section>
 
-        <section class="metric-strip" aria-label="监测概览">
+        <section class="view-section metric-strip" data-view-section="home" aria-label="监测概览">
           <div class="metric">
             <span class="metric-label">监测中</span>
             <strong id="metricTotal">0</strong>
@@ -161,7 +190,7 @@
           </div>
         </section>
 
-        <section class="watchlist-section">
+        <section id="view-rooms" class="view-section watchlist-section is-hidden" data-view-section="rooms" role="tabpanel" aria-labelledby="tab-rooms">
           <div class="section-heading">
             <div>
               <h2>我的直播间</h2>
@@ -208,7 +237,7 @@
           </div>
         </section>
 
-        <section class="activity-section">
+        <section id="view-notifications" class="view-section activity-section is-hidden" data-view-section="notifications" role="tabpanel" aria-labelledby="tab-notifications">
           <div class="section-heading section-heading-compact">
             <div>
               <h2>最近通知</h2>

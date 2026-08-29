@@ -8,6 +8,7 @@ const state = {
   busy: false,
   editingStreamId: null,
   authenticated: false,
+  view: "home",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -99,6 +100,25 @@ function streamMatchesQuery(stream) {
     platformLabels[stream.platform],
   ].join(" ").toLowerCase();
   return haystack.includes(state.query.toLowerCase());
+}
+
+function normalizeView(value) {
+  return ["home", "rooms", "notifications"].includes(value) ? value : "home";
+}
+
+function switchView(view, updateHash = true) {
+  state.view = normalizeView(view);
+  document.querySelectorAll("[data-view-tab]").forEach((tab) => {
+    const active = tab.dataset.viewTab === state.view;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll("[data-view-section]").forEach((section) => {
+    section.classList.toggle("is-hidden", section.dataset.viewSection !== state.view);
+  });
+  if (updateHash && window.location.hash !== `#${state.view}`) {
+    window.history.replaceState(null, "", `#${state.view}`);
+  }
 }
 
 function renderStreams() {
@@ -506,6 +526,11 @@ document.addEventListener("click", (event) => {
     if (action === "test-notification") testNotification(actionTarget);
   }
 
+  const viewTarget = event.target.closest("[data-view-tab]");
+  if (viewTarget) {
+    switchView(viewTarget.dataset.viewTab);
+  }
+
   const filterTarget = event.target.closest("[data-filter]");
   if (filterTarget) {
     state.filter = filterTarget.dataset.filter;
@@ -526,11 +551,16 @@ $("#searchInput").addEventListener("input", (event) => {
   renderStreams();
 });
 
+window.addEventListener("hashchange", () => {
+  switchView(window.location.hash.slice(1), false);
+});
+
 async function initialize() {
   try {
     const auth = await requestJSON("/api/auth/me");
     if (auth.authenticated) {
       showApp();
+      switchView(window.location.hash.slice(1), false);
       await loadDashboard();
     } else {
       showAuth();
@@ -541,4 +571,5 @@ async function initialize() {
 }
 
 initialize();
+switchView(window.location.hash.slice(1), false);
 window.setInterval(loadDashboard, 30000);
