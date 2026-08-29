@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend.app import LiveMonitorApp
+from backend.monitor import MonitorService
 from backend.platforms import PlatformError, RoomSnapshot
 
 
@@ -316,8 +317,25 @@ class AppApiTests(unittest.TestCase):
         stopped_event = next(
             event for event in events if event["event_type"] == "stopped"
         )
-        self.assertEqual(stopped_event["title"], "下播测试下播了")
+        self.assertEqual(
+            stopped_event["title"],
+            "下播测试下播了，时长为00:00:00",
+        )
         self.assertEqual(stopped_event["message"], "")
+
+    def test_stopped_notification_includes_duration(self):
+        text = MonitorService._notification_text(
+            {
+                "platform": "huya",
+                "room_key": "123",
+                "display_name": "紫皮小子",
+                "live_duration_seconds": 31939,
+            },
+            RoomSnapshot(status="offline"),
+            event_type="stopped",
+        )
+
+        self.assertEqual(text, "紫皮小子下播了，时长为08:52:19")
 
     def test_settings_do_not_expose_secrets(self):
         headers = self.login_headers()

@@ -272,5 +272,18 @@ class MonitorService:
             live_title = str(snapshot.title or "").strip()
             return f"{title}：{live_title}" if live_title else title
         if event_type == "stopped":
-            return f"{name}下播了"
+            duration = MonitorService._format_duration(
+                stream.get("live_duration_seconds", 0)
+            )
+            return f"{name}下播了，时长为{duration}"
         raise ValueError(f"不支持的通知事件：{event_type}")
+
+    @staticmethod
+    def _format_duration(value: Any) -> str:
+        try:
+            total_seconds = max(0, int(value or 0))
+        except (TypeError, ValueError):
+            total_seconds = 0
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
