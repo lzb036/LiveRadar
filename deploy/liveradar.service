@@ -1,0 +1,22 @@
+[Unit]
+Description=LiveRadar live room monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=liveradar
+Group=liveradar
+WorkingDirectory=/www/wwwroot/LiveRadar
+ExecStart=/usr/bin/python3.11 /www/wwwroot/LiveRadar/server.py
+Environment=LIVE_MONITOR_HOST=127.0.0.1
+Environment=LIVE_MONITOR_PORT=8765
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

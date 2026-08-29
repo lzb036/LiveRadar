@@ -57,6 +57,9 @@ frontend/
   index.html
   app.js
   styles.css
+deploy/
+  liveradar.service
+  liveradar.nginx.conf
 tests/
   test_platforms.py
 server.py         本地启动入口
