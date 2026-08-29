@@ -5,6 +5,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
@@ -40,6 +41,7 @@ class RoomSnapshot:
     room_id: str = ""
     anchor_key: str = ""
     profile_url: str = ""
+    live_started_at: str = ""
 
 
 def http_get(url: str, *, timeout: int = 15) -> str:
@@ -193,6 +195,11 @@ class BilibiliAdapter:
             title=str(data.get("title") or ""),
             cover_url=str(data.get("user_cover") or data.get("keyframe") or ""),
             room_id=str(data.get("room_id") or reference.room_key),
+            live_started_at=(
+                _parse_bilibili_live_time(data.get("live_time"))
+                if status == "live"
+                else ""
+            ),
         )
 
 
@@ -256,6 +263,11 @@ class HuyaAdapter:
                         or ""
                     ),
                     room_id=room_id or reference.room_key,
+                    live_started_at=(
+                        _parse_epoch_timestamp(room_data.get("startTime"))
+                        if is_on
+                        else ""
+                    ),
                 )
 
             last_error = "虎牙页面暂时无法解析直播间信息"
@@ -284,6 +296,40 @@ def _extract_douyin_scalar(source: str, key: str) -> str:
         source,
     )
     return match.group(1) if match else ""
+
+
+def _parse_bilibili_live_time(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw or raw.startswith("0000-00-00"):
+        return ""
+    try:
+        local_time = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return ""
+    china_timezone = timezone(timedelta(hours=8))
+    return local_time.replace(tzinfo=china_timezone).astimezone(
+        timezone.utc
+    ).isoformat(timespec="seconds")
+
+
+def _parse_epoch_timestamp(value: Any) -> str:
+    try:
+        timestamp = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if timestamp <= 0:
+        return ""
+    if timestamp >= 1_000_000_000_000:
+        timestamp /= 1000
+    try:
+        parsed = datetime.fromtimestamp(timestamp, timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return ""
+    earliest = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    latest = datetime.now(timezone.utc) + timedelta(minutes=5)
+    if parsed < earliest or parsed > latest:
+        return ""
+    return parsed.isoformat(timespec="seconds")
 
 
 class DouyinAdapter:

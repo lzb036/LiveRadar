@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -60,6 +61,7 @@ class PlatformAdapterTests(unittest.TestCase):
                     "room_id": 12345,
                     "title": "晚间直播",
                     "live_status": 1,
+                    "live_time": "2026-08-29 20:00:00",
                     "user_cover": "https://example.com/cover.jpg",
                 },
             }
@@ -69,6 +71,10 @@ class PlatformAdapterTests(unittest.TestCase):
         self.assertEqual(snapshot.status, "live")
         self.assertEqual(snapshot.title, "晚间直播")
         self.assertEqual(snapshot.room_id, "12345")
+        self.assertEqual(
+            snapshot.live_started_at,
+            "2026-08-29T12:00:00+00:00",
+        )
 
     @patch("backend.platforms.http_get")
     def test_huya_offline_snapshot(self, mock_get):
@@ -99,7 +105,8 @@ class PlatformAdapterTests(unittest.TestCase):
             <body class="liveStatus-on">
               <script>
                 var TT_ROOM_DATA = {"isOn":true,"id":1199630339535,
-                  "profileRoom":149721,"roomName":"GENG大战T1"};
+                  "profileRoom":149721,"roomName":"GENG大战T1",
+                  "startTime":1700000000};
                 var TT_PROFILE_INFO = {"nick":"神枪小子","profileRoom":149721};
               </script>
             </body>
@@ -113,6 +120,10 @@ class PlatformAdapterTests(unittest.TestCase):
         self.assertEqual(snapshot.status, "live")
         self.assertEqual(snapshot.anchor_name, "神枪小子")
         self.assertEqual(snapshot.room_id, "149721")
+        self.assertEqual(
+            snapshot.live_started_at,
+            "2023-11-14T22:13:20+00:00",
+        )
         self.assertEqual(
             mock_get.call_args_list[1].args[0],
             "https://www.huya.com/shenqiangxiaozi?hyaction=home",
@@ -139,6 +150,7 @@ class PlatformAdapterTests(unittest.TestCase):
         self.assertEqual(snapshot.title, "测试直播")
         self.assertEqual(snapshot.room_id, "7679259829717732130")
         self.assertEqual(snapshot.cover_url, "https://example.com/poster.jpg")
+        self.assertEqual(snapshot.live_started_at, "")
 
     @patch("backend.platforms.http_get")
     def test_douyin_missing_status_is_error(self, mock_get):
@@ -166,6 +178,51 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(previous, "unknown")
             self.assertEqual(stream["status"], "live")
             self.assertEqual(stream["last_live_at"], stream["last_checked_at"])
+
+    def test_record_check_tracks_and_replaces_live_session_timing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "monitor.db")
+            stream_id = database.add_stream(
+                "douyin",
+                "6096197105",
+                "https://live.douyin.com/6096197105",
+                "测试抖音直播间",
+            )
+            first_start = (
+                datetime.now(timezone.utc) - timedelta(seconds=90)
+            ).isoformat(timespec="seconds")
+
+            live, previous = database.record_check(
+                stream_id,
+                status="live",
+                live_started_at=first_start,
+            )
+
+            self.assertEqual(previous, "unknown")
+            self.assertEqual(live["live_started_at"], first_start)
+            self.assertGreaterEqual(live["live_duration_seconds"], 89)
+
+            offline, previous = database.record_check(
+                stream_id,
+                status="offline",
+            )
+
+            self.assertEqual(previous, "live")
+            self.assertEqual(offline["live_started_at"], first_start)
+            self.assertGreaterEqual(offline["live_duration_seconds"], 89)
+
+            second_start = datetime.now(timezone.utc).isoformat(
+                timespec="seconds"
+            )
+            next_live, previous = database.record_check(
+                stream_id,
+                status="live",
+                live_started_at=second_start,
+            )
+
+            self.assertEqual(previous, "offline")
+            self.assertEqual(next_live["live_started_at"], second_start)
+            self.assertLessEqual(next_live["live_duration_seconds"], 1)
 
     def test_stream_and_notification_pagination(self):
         with tempfile.TemporaryDirectory() as directory:

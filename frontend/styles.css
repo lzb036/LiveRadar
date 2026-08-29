@@ -732,7 +732,7 @@ a {
 
 .stream-table {
   width: 100%;
-  min-width: 840px;
+  min-width: 1120px;
   border-collapse: collapse;
   text-align: left;
 }
@@ -912,6 +912,23 @@ a {
   font-family: var(--mono);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.start-time-cell,
+.duration-cell {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.start-time-cell {
+  min-width: 148px;
+}
+
+.duration-cell {
+  min-width: 82px;
+  color: var(--ink);
 }
 
 .title-cell {

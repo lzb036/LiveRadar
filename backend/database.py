@@ -22,6 +22,35 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _normalise_timestamp(value: str | None) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def _duration_seconds(
+    started_at: str | None,
+    now: datetime,
+    *,
+    default: int,
+) -> int:
+    normalised = _normalise_timestamp(started_at)
+    if not normalised:
+        return max(0, default)
+    try:
+        started = datetime.fromisoformat(normalised)
+    except ValueError:
+        return max(0, default)
+    return max(0, int((now - started).total_seconds()))
+
+
 class DuplicateStreamError(ValueError):
     """Raised when the same platform room is already being monitored."""
 
@@ -76,6 +105,8 @@ class Database:
                         last_checked_at TEXT,
                         last_live_at TEXT,
                         last_offline_at TEXT,
+                        live_started_at TEXT,
+                        live_duration_seconds INTEGER NOT NULL DEFAULT 0,
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL,
                         UNIQUE(platform, room_key)
@@ -134,6 +165,8 @@ class Database:
                     ("live_session_active", "INTEGER NOT NULL DEFAULT 0"),
                     ("start_notification_sent", "INTEGER NOT NULL DEFAULT 0"),
                     ("stop_notification_sent", "INTEGER NOT NULL DEFAULT 0"),
+                    ("live_started_at", "TEXT"),
+                    ("live_duration_seconds", "INTEGER NOT NULL DEFAULT 0"),
                 ):
                     if column not in existing_columns:
                         connection.execute(
@@ -493,6 +526,8 @@ class Database:
                             last_checked_at = NULL,
                             last_live_at = NULL,
                             last_offline_at = NULL,
+                            live_started_at = NULL,
+                            live_duration_seconds = 0,
                             updated_at = ?
                         WHERE id = ?
                         """,
@@ -562,18 +597,23 @@ class Database:
         error_message: str = "",
         anchor_key: str | None = None,
         profile_url: str | None = None,
+        live_started_at: str | None = None,
     ) -> tuple[dict[str, Any] | None, str]:
-        now = utc_now()
+        now_datetime = datetime.now(timezone.utc)
+        now = now_datetime.isoformat(timespec="seconds")
         with self._lock:
             with self._session() as connection:
                 before = connection.execute(
                     """
                     SELECT
                         status,
+                        live_session_active,
                         last_live_at,
                         last_offline_at,
                         anchor_key,
-                        profile_url
+                        profile_url,
+                        live_started_at,
+                        live_duration_seconds
                     FROM streams
                     WHERE id = ?
                     """,
@@ -584,6 +624,16 @@ class Database:
 
                 last_live_at = before["last_live_at"]
                 last_offline_at = before["last_offline_at"]
+                stored_live_started_at = before["live_started_at"]
+                try:
+                    live_duration_seconds = int(
+                        before["live_duration_seconds"] or 0
+                    )
+                except (TypeError, ValueError):
+                    live_duration_seconds = 0
+                was_live_session = bool(before["live_session_active"]) or (
+                    before["status"] == "live"
+                )
                 stored_anchor_key = (
                     before["anchor_key"] if anchor_key is None else anchor_key
                 )
@@ -592,8 +642,24 @@ class Database:
                 )
                 if status == "live":
                     last_live_at = now
+                    if not was_live_session or not stored_live_started_at:
+                        stored_live_started_at = (
+                            _normalise_timestamp(live_started_at) or now
+                        )
+                        live_duration_seconds = 0
+                    live_duration_seconds = _duration_seconds(
+                        stored_live_started_at,
+                        now_datetime,
+                        default=live_duration_seconds,
+                    )
                 elif status in {"offline", "replay"}:
                     last_offline_at = now
+                    if was_live_session:
+                        live_duration_seconds = _duration_seconds(
+                            stored_live_started_at,
+                            now_datetime,
+                            default=live_duration_seconds,
+                        )
 
                 connection.execute(
                     """
@@ -608,6 +674,8 @@ class Database:
                         last_checked_at = ?,
                         last_live_at = ?,
                         last_offline_at = ?,
+                        live_started_at = ?,
+                        live_duration_seconds = ?,
                         updated_at = ?
                     WHERE id = ?
                     """,
@@ -622,6 +690,8 @@ class Database:
                         now,
                         last_live_at,
                         last_offline_at,
+                        stored_live_started_at,
+                        live_duration_seconds,
                         now,
                         stream_id,
                     ),

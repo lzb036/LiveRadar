@@ -67,6 +67,64 @@ function formatTime(value) {
   }).format(date);
 }
 
+function formatDateTime(value) {
+  if (!value) return "尚未开播";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  const pad = (number) => String(number).padStart(2, "0");
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join(" ");
+}
+
+function formatDurationSeconds(value) {
+  const totalSeconds = Math.max(0, Math.floor(Number(value) || 0));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+function streamHasLiveSession(stream) {
+  return stream.status === "live" || Boolean(Number(stream.live_session_active));
+}
+
+function streamDurationSeconds(stream) {
+  const storedDuration = Math.max(
+    0,
+    Math.floor(Number(stream.live_duration_seconds) || 0),
+  );
+  if (!stream.live_started_at || !streamHasLiveSession(stream)) {
+    return storedDuration;
+  }
+  const startedAt = Date.parse(stream.live_started_at);
+  if (Number.isNaN(startedAt)) {
+    return storedDuration;
+  }
+  return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+}
+
+function formatStreamDuration(stream) {
+  if (!stream.live_started_at && !Number(stream.live_duration_seconds)) {
+    return "—";
+  }
+  return formatDurationSeconds(streamDurationSeconds(stream));
+}
+
+function updateLiveDurations() {
+  document.querySelectorAll(".duration-cell[data-live-active='true']").forEach(
+    (cell) => {
+      const startedAt = Date.parse(cell.dataset.liveStartedAt || "");
+      if (Number.isNaN(startedAt)) return;
+      cell.textContent = formatDurationSeconds(
+        (Date.now() - startedAt) / 1000,
+      );
+    },
+  );
+}
+
 function statusMeta(stream) {
   if (!stream.enabled) return { key: "disabled", label: "已停用", detail: "手动停用" };
   if (stream.status === "live") return { key: "live", label: "直播中", detail: "正在直播" };
@@ -135,6 +193,8 @@ function renderStreams() {
         : `房间 ID ${stream.room_key}`;
       const openUrl = streamOpenUrl(stream);
       const openLabel = streamOpenLabel(stream);
+      const liveStartedAt = stream.live_started_at || "";
+      const liveSessionActive = streamHasLiveSession(stream);
       const error = meta.key === "error"
         ? `<span class="row-error">${escapeHtml(meta.detail)}</span>`
         : "";
@@ -158,6 +218,12 @@ function renderStreams() {
               <span class="status-dot"></span>${escapeHtml(meta.label)}
             </span>
           </td>
+          <td class="start-time-cell">${escapeHtml(formatDateTime(liveStartedAt))}</td>
+          <td
+            class="duration-cell"
+            data-live-started-at="${escapeHtml(liveStartedAt)}"
+            data-live-active="${liveSessionActive}"
+          >${escapeHtml(formatStreamDuration(stream))}</td>
           <td class="time-cell">${escapeHtml(formatTime(stream.last_checked_at))}</td>
           <td class="title-cell" title="${escapeHtml(title)}">${escapeHtml(title)}</td>
           <td>
@@ -186,6 +252,7 @@ function renderStreams() {
     emptyState.querySelector("p").textContent = "换一个筛选条件或搜索词。";
   }
   renderPagination("#streamPagination", state.streamPagination, "streams");
+  updateLiveDurations();
 }
 
 function renderEvents() {
@@ -704,3 +771,4 @@ async function initialize() {
 initialize();
 switchView(window.location.hash.slice(1), false);
 window.setInterval(loadDashboard, 30000);
+window.setInterval(updateLiveDurations, 1000);

@@ -91,6 +91,7 @@ class MonitorService:
                     cover_url=snapshot.cover_url,
                     anchor_key=snapshot.anchor_key or None,
                     profile_url=snapshot.profile_url or None,
+                    live_started_at=snapshot.live_started_at or None,
                 )
                 if updated:
                     self._process_notification_state(
