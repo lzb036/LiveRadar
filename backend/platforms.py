@@ -141,7 +141,9 @@ def _parse_douyin_reference(value: str, profile_url: str) -> RoomReference:
         parsed = urlparse(value if "://" in value else f"https://{value}")
         host = parsed.netloc.lower().split(":", 1)[0]
         if host not in {"live.douyin.com", "www.live.douyin.com"}:
-            raise ValueError("抖音检测需要填写 live.douyin.com 的直播间链接")
+            raise ValueError(
+                "抖音请填写 live.douyin.com 的直播间链接或数字直播间 ID"
+            )
         room_key = next((part for part in parsed.path.split("/") if part), "")
         if not room_key or not room_key.isdigit():
             raise ValueError("没有识别到抖音直播间 ID")

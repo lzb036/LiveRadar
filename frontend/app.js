@@ -108,24 +108,11 @@ function switchView(view, updateHash = true) {
 }
 
 function streamOpenUrl(stream) {
-  if (
-    stream.platform === "douyin"
-    && stream.status !== "live"
-    && stream.profile_url
-  ) {
-    return stream.profile_url;
-  }
   return stream.room_url;
 }
 
 function streamOpenLabel(stream) {
-  return (
-    stream.platform === "douyin"
-    && stream.status !== "live"
-    && stream.profile_url
-  )
-    ? "主页"
-    : "打开";
+  return "打开";
 }
 
 function renderStreams() {
@@ -383,7 +370,6 @@ function openStreamDialog(stream = null) {
   if (stream) {
     $("#platformInput").value = stream.platform;
     $("#roomInput").value = stream.room_url;
-    $("#profileUrlInput").value = stream.profile_url || "";
     $("#displayNameInput").value = stream.display_name || "";
   }
   updateRoomHint();
@@ -395,13 +381,12 @@ function updateRoomHint() {
   const platform = $("#platformInput").value;
   const isHuya = platform === "huya";
   const isDouyin = platform === "douyin";
-  $("#profileUrlField").classList.toggle("is-hidden", !isDouyin);
   $("#roomInputLabel").textContent = isDouyin
-    ? "抖音直播间链接或房间 ID"
+    ? "抖音直播间 ID"
     : "直播间链接或房间 ID";
-  $("#roomInput").placeholder = isDouyin ? "例如：https://live.douyin.com/..." : "例如：123456";
+  $("#roomInput").placeholder = isDouyin ? "例如：6096197105" : "例如：123456";
   $("#roomInputHint").textContent = isDouyin
-    ? "支持 live.douyin.com/直播间ID；同时填写主播主页链接更适合长期监测。"
+    ? "填写 live.douyin.com/ 后面的数字直播间 ID。"
     : isHuya
       ? "支持 www.huya.com/房间ID，或直接填写房间 ID。"
       : "支持 live.bilibili.com/数字房间ID，或直接填写数字 ID。";
@@ -420,7 +405,6 @@ async function submitStream(event) {
       body: JSON.stringify({
         platform: formData.get("platform"),
         room_url: formData.get("room_url"),
-        profile_url: formData.get("profile_url"),
         display_name: formData.get("display_name"),
       }),
     });
