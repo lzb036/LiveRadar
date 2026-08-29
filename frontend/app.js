@@ -11,9 +11,17 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 const platformLabels = { bilibili: "Bilibili", huya: "虎牙", douyin: "抖音" };
+const currentPath = window.location.pathname;
+const appBasePath = currentPath === "/liveradar" || currentPath.startsWith("/liveradar/")
+  ? "/liveradar"
+  : "";
+
+function appUrl(path) {
+  return `${appBasePath}${path}`;
+}
 
 async function requestJSON(url, options = {}) {
-  const response = await fetch(url, {
+  const response = await fetch(appUrl(url), {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
