@@ -320,6 +320,29 @@ class AppApiTests(unittest.TestCase):
         self.assertTrue(settings["serverchan_sendkey_set"])
         self.assertNotIn("SCT-test-secret", str(settings))
 
+    def test_stream_api_returns_fixed_page_size(self):
+        headers = self.login_headers()
+        for index in range(21):
+            self.app.database.add_stream(
+                "bilibili",
+                str(30000 + index),
+                f"https://live.bilibili.com/{30000 + index}",
+                f"分页直播间 {index}",
+            )
+
+        response = self.app.handle_api(
+            "GET",
+            "/api/streams",
+            None,
+            {"page": ["2"], "filter": ["all"]},
+            headers,
+        )
+        self.assertEqual(response.status, 200)
+        self.assertEqual(len(response.body["items"]), 1)
+        self.assertEqual(response.body["pagination"]["page_size"], 20)
+        self.assertEqual(response.body["pagination"]["total"], 21)
+        self.assertEqual(response.body["pagination"]["total_pages"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

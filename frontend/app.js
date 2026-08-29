@@ -9,6 +9,12 @@ const state = {
   editingStreamId: null,
   authenticated: false,
   view: "home",
+  streamPage: 1,
+  eventPage: 1,
+  pageSize: 20,
+  streamPagination: { page: 1, page_size: 20, total: 0, total_pages: 0 },
+  eventPagination: { page: 1, page_size: 20, total: 0, total_pages: 0 },
+  searchTimer: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -82,26 +88,6 @@ function renderMetrics() {
   $("#scanInterval").textContent = `每 ${state.settings.monitor_interval_seconds ?? 60} 秒`;
 }
 
-function streamMatchesFilter(stream) {
-  const meta = statusMeta(stream);
-  if (state.filter === "live") return meta.key === "live";
-  if (state.filter === "offline") return meta.key === "offline" || meta.key === "replay";
-  if (state.filter === "attention") return ["error", "unknown", "disabled"].includes(meta.key);
-  return true;
-}
-
-function streamMatchesQuery(stream) {
-  if (!state.query) return true;
-  const haystack = [
-    stream.display_name,
-    stream.anchor_name,
-    stream.title,
-    stream.room_key,
-    platformLabels[stream.platform],
-  ].join(" ").toLowerCase();
-  return haystack.includes(state.query.toLowerCase());
-}
-
 function normalizeView(value) {
   return ["home", "rooms", "notifications"].includes(value) ? value : "home";
 }
@@ -124,9 +110,7 @@ function switchView(view, updateHash = true) {
 function renderStreams() {
   const tbody = $("#streamRows");
   const emptyState = $("#emptyState");
-  const filtered = state.streams.filter(
-    (stream) => streamMatchesFilter(stream) && streamMatchesQuery(stream),
-  );
+  const filtered = state.streams;
   tbody.innerHTML = filtered
     .map((stream, index) => {
       const meta = statusMeta(stream);
@@ -174,7 +158,7 @@ function renderStreams() {
     })
     .join("");
 
-  const hasStreams = state.streams.length > 0;
+  const hasStreams = state.streamPagination.total > 0;
   const hasResults = filtered.length > 0;
   document.querySelector(".table-frame").classList.toggle("has-data", hasResults);
   emptyState.classList.toggle("is-hidden", hasResults);
@@ -185,12 +169,14 @@ function renderStreams() {
     emptyState.querySelector("h3").textContent = "没有匹配的直播间";
     emptyState.querySelector("p").textContent = "换一个筛选条件或搜索词。";
   }
+  renderPagination("#streamPagination", state.streamPagination, "streams");
 }
 
 function renderEvents() {
   const target = $("#eventList");
   if (!state.events.length) {
     target.innerHTML = `<div class="event-empty">还没有通知记录</div>`;
+    renderPagination("#eventPagination", state.eventPagination, "events");
     return;
   }
   target.innerHTML = state.events
@@ -212,19 +198,70 @@ function renderEvents() {
       `;
     })
     .join("");
+  renderPagination("#eventPagination", state.eventPagination, "events");
 }
 
-async function loadDashboard() {
+function renderPagination(selector, pagination, type) {
+  const target = $(selector);
+  if (!target) return;
+  const total = Number(pagination?.total || 0);
+  const totalPages = Number(pagination?.total_pages || 0);
+  const page = Number(pagination?.page || 1);
+  if (total <= state.pageSize || totalPages <= 1) {
+    target.innerHTML = "";
+    target.classList.add("is-hidden");
+    return;
+  }
+
+  const previousPage = Math.max(1, page - 1);
+  const nextPage = Math.min(totalPages, page + 1);
+  target.classList.remove("is-hidden");
+  target.innerHTML = `
+    <span class="pagination-copy">第 ${page} / ${totalPages} 页 · 共 ${total} 条 · 每页 ${state.pageSize} 条</span>
+    <span class="pagination-actions">
+      <button class="pagination-button" data-page-action="${type}" data-page="${previousPage}" ${page <= 1 ? "disabled" : ""}>上一页</button>
+      <button class="pagination-button" data-page-action="${type}" data-page="${nextPage}" ${page >= totalPages ? "disabled" : ""}>下一页</button>
+    </span>
+  `;
+}
+
+async function loadDashboard(options = {}) {
   if (!state.authenticated) return;
+  if (options.resetStreams) state.streamPage = 1;
+  if (options.resetEvents) state.eventPage = 1;
   try {
+    const streamParams = new URLSearchParams({
+      page: String(state.streamPage),
+      filter: state.filter,
+      query: state.query,
+    });
+    const eventParams = new URLSearchParams({
+      page: String(state.eventPage),
+    });
     const [dashboard, events] = await Promise.all([
-      requestJSON("/api/streams"),
-      requestJSON("/api/notifications?limit=8"),
+      requestJSON(`/api/streams?${streamParams.toString()}`),
+      requestJSON(`/api/notifications?${eventParams.toString()}`),
     ]);
     state.streams = dashboard.items || [];
+    state.streamPagination = dashboard.pagination || state.streamPagination;
     state.metrics = dashboard.metrics || {};
     state.settings = dashboard.settings || {};
     state.events = events.items || [];
+    state.eventPagination = events.pagination || state.eventPagination;
+    if (
+      state.streamPagination.total_pages > 0
+      && state.streamPage > state.streamPagination.total_pages
+    ) {
+      state.streamPage = state.streamPagination.total_pages;
+      return loadDashboard();
+    }
+    if (
+      state.eventPagination.total_pages > 0
+      && state.eventPage > state.eventPagination.total_pages
+    ) {
+      state.eventPage = state.eventPagination.total_pages;
+      return loadDashboard();
+    }
     renderMetrics();
     renderStreams();
     renderEvents();
@@ -531,14 +568,27 @@ document.addEventListener("click", (event) => {
     switchView(viewTarget.dataset.viewTab);
   }
 
+  const pageTarget = event.target.closest("[data-page-action]");
+  if (pageTarget && !pageTarget.disabled) {
+    const page = Number(pageTarget.dataset.page);
+    if (pageTarget.dataset.pageAction === "streams") {
+      state.streamPage = page;
+    } else {
+      state.eventPage = page;
+    }
+    loadDashboard();
+  }
+
   const filterTarget = event.target.closest("[data-filter]");
   if (filterTarget) {
     state.filter = filterTarget.dataset.filter;
+    state.streamPage = 1;
     document.querySelectorAll("[data-filter]").forEach((button) => {
       button.classList.toggle("is-active", button === filterTarget);
     });
-    renderStreams();
+    loadDashboard();
   }
+
 });
 
 $("#streamForm").addEventListener("submit", submitStream);
@@ -548,7 +598,9 @@ $("#platformInput").addEventListener("change", updateRoomHint);
 $("#providerInput").addEventListener("change", updateProviderFields);
 $("#searchInput").addEventListener("input", (event) => {
   state.query = event.target.value.trim();
-  renderStreams();
+  state.streamPage = 1;
+  window.clearTimeout(state.searchTimer);
+  state.searchTimer = window.setTimeout(() => loadDashboard(), 260);
 });
 
 window.addEventListener("hashchange", () => {

@@ -452,24 +452,11 @@ a {
   gap: 12px;
 }
 
-.connection-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.connection-dot,
 .status-dot {
   display: inline-block;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-}
-
-.connection-dot {
-  background: var(--green);
 }
 
 .main-content {
@@ -989,16 +976,55 @@ a {
   font-size: 13px;
 }
 
-.footer {
-  width: min(1240px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 19px 0 28px;
+.pagination {
+  min-height: 55px;
   display: flex;
   justify-content: space-between;
-  color: var(--subtle);
+  align-items: center;
+  gap: 18px;
+  padding: 14px 0 0;
   border-top: 1px solid var(--line);
-  font-size: 11px;
+}
+
+.pagination-copy {
+  color: var(--muted);
   font-family: var(--mono);
+  font-size: 11px;
+}
+
+.pagination-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.pagination-button {
+  min-width: 72px;
+  padding: 6px 10px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.pagination-button:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--ink);
+}
+
+.pagination-button:disabled {
+  color: var(--subtle);
+  background: transparent;
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+.pagination.is-hidden {
+  display: none;
+}
+
+.footer {
+  display: none;
 }
 
 .modal {
@@ -1183,6 +1209,7 @@ a {
 }
 
 .modal-footer {
+  color: var(--subtle);
   justify-content: flex-end;
   border-top: 1px solid var(--line);
 }
@@ -1287,8 +1314,7 @@ a {
   }
 
   .topbar,
-  .main-content,
-  .footer {
+  .main-content {
     width: min(100% - 28px, 1240px);
   }
 
@@ -1299,10 +1325,6 @@ a {
   }
 
   .brand-name {
-    display: none;
-  }
-
-  .connection-state {
     display: none;
   }
 
@@ -1412,9 +1434,10 @@ a {
     text-align: left;
   }
 
-  .footer {
-    gap: 12px;
+  .pagination {
+    align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
   }
 
   .modal-header,

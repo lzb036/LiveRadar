@@ -167,6 +167,39 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(stream["status"], "live")
             self.assertEqual(stream["last_live_at"], stream["last_checked_at"])
 
+    def test_stream_and_notification_pagination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "monitor.db")
+            for index in range(21):
+                database.add_stream(
+                    "bilibili",
+                    str(10000 + index),
+                    f"https://live.bilibili.com/{10000 + index}",
+                    f"直播间 {index}",
+                )
+                database.record_notification(
+                    None,
+                    event_type="started",
+                    title=f"通知 {index}",
+                    message="测试通知",
+                    delivered=True,
+                )
+
+            streams, stream_pagination = database.list_streams_page(
+                page=2,
+                page_size=20,
+            )
+            events, event_pagination = database.list_notification_events_page(
+                page=2,
+                page_size=20,
+            )
+            self.assertEqual(len(streams), 1)
+            self.assertEqual(stream_pagination["total"], 21)
+            self.assertEqual(stream_pagination["total_pages"], 2)
+            self.assertEqual(event_pagination["total"], 21)
+            self.assertEqual(event_pagination["total_pages"], 2)
+            self.assertEqual(len(events), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

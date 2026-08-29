@@ -14,6 +14,9 @@ from .notifier import mask_secret
 from .platforms import parse_room_reference
 
 
+PAGE_SIZE = 20
+
+
 @dataclass(frozen=True)
 class ApiResponse:
     status: int
@@ -103,14 +106,14 @@ class LiveMonitorApp:
             )
 
         if path == "/api/streams" and method == "GET":
-            return self._dashboard_payload()
+            return self._dashboard_payload(query)
 
         if path == "/api/streams" and method == "POST":
             return self._create_stream(body)
 
         if path == "/api/check-all" and method == "POST":
             self.monitor.check_all(allow_notify=True)
-            return self._dashboard_payload()
+            return self._dashboard_payload(query)
 
         if path == "/api/settings" and method == "GET":
             return self._response(200, {"settings": self._public_settings()})
@@ -119,14 +122,14 @@ class LiveMonitorApp:
             return self._update_settings(body)
 
         if path == "/api/notifications" and method == "GET":
-            raw_limit = (query.get("limit") or ["8"])[0]
-            try:
-                limit = int(raw_limit)
-            except ValueError:
-                limit = 8
+            page = self._query_int(query, "page", 1)
+            items, pagination = self.database.list_notification_events_page(
+                page=page,
+                page_size=PAGE_SIZE,
+            )
             return self._response(
                 200,
-                {"items": self.database.list_notification_events(limit)},
+                {"items": items, "pagination": pagination},
             )
 
         if path == "/api/notifications/test" and method == "POST":
@@ -173,12 +176,31 @@ class LiveMonitorApp:
             content_type = f"{content_type}; charset=utf-8"
         return 200, content_type, candidate.read_bytes()
 
-    def _dashboard_payload(self) -> ApiResponse:
-        return self._response(200, {
-            "items": self.database.list_streams(),
-            "metrics": self.database.metrics(),
-            "settings": self._public_settings(),
-        })
+    def _dashboard_payload(
+        self,
+        query: dict[str, list[str]] | None = None,
+    ) -> ApiResponse:
+        query = query or {}
+        page = self._query_int(query, "page", 1)
+        status_filter = (query.get("filter") or ["all"])[0]
+        if status_filter not in {"all", "live", "offline", "attention"}:
+            status_filter = "all"
+        search_query = (query.get("query") or [""])[0]
+        items, pagination = self.database.list_streams_page(
+            page=page,
+            page_size=PAGE_SIZE,
+            status_filter=status_filter,
+            search_query=search_query,
+        )
+        return self._response(
+            200,
+            {
+                "items": items,
+                "pagination": pagination,
+                "metrics": self.database.metrics(),
+                "settings": self._public_settings(),
+            },
+        )
 
     def _create_stream(self, body: dict[str, Any]) -> ApiResponse:
         platform = str(body.get("platform") or "")
@@ -310,6 +332,17 @@ class LiveMonitorApp:
         if isinstance(value, str):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
+
+    @staticmethod
+    def _query_int(
+        query: dict[str, list[str]],
+        key: str,
+        default: int,
+    ) -> int:
+        try:
+            return max(1, int((query.get(key) or [str(default)])[0]))
+        except (TypeError, ValueError):
+            return default
 
     @staticmethod
     def _response(

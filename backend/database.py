@@ -222,6 +222,81 @@ class Database:
                 ).fetchall()
                 return [self._serialize_stream(row) for row in rows]
 
+    def list_streams_page(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        status_filter: str = "all",
+        search_query: str = "",
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        page = max(1, int(page))
+        page_size = max(1, min(int(page_size), 100))
+        clauses: list[str] = []
+        params: list[Any] = []
+
+        if status_filter == "live":
+            clauses.append("enabled = 1 AND status = 'live'")
+        elif status_filter == "offline":
+            clauses.append("enabled = 1 AND status IN ('offline', 'replay')")
+        elif status_filter == "attention":
+            clauses.append(
+                "(enabled = 0 OR status IN ('error', 'unknown'))"
+            )
+
+        search_query = (search_query or "").strip()[:100]
+        if search_query:
+            pattern = f"%{search_query}%"
+            clauses.append(
+                """
+                (
+                    display_name LIKE ? COLLATE NOCASE
+                    OR anchor_name LIKE ? COLLATE NOCASE
+                    OR title LIKE ? COLLATE NOCASE
+                    OR room_key LIKE ? COLLATE NOCASE
+                    OR platform LIKE ? COLLATE NOCASE
+                )
+                """
+            )
+            params.extend([pattern] * 5)
+
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._lock:
+            with self._session() as connection:
+                total = int(
+                    connection.execute(
+                        f"SELECT COUNT(*) AS total FROM streams {where}",
+                        params,
+                    ).fetchone()["total"]
+                    or 0
+                )
+                offset = (page - 1) * page_size
+                rows = connection.execute(
+                    f"""
+                    SELECT *
+                    FROM streams
+                    {where}
+                    ORDER BY
+                        CASE status
+                            WHEN 'live' THEN 0
+                            WHEN 'error' THEN 1
+                            WHEN 'unknown' THEN 2
+                            ELSE 3
+                        END,
+                        created_at DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    [*params, page_size, offset],
+                ).fetchall()
+                items = [self._serialize_stream(row) for row in rows]
+
+        return items, {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": (total + page_size - 1) // page_size,
+        }
+
     def get_stream(self, stream_id: int) -> dict[str, Any] | None:
         with self._lock:
             with self._session() as connection:
@@ -555,6 +630,50 @@ class Database:
                     item["delivered"] = bool(item["delivered"])
                     items.append(item)
                 return items
+
+    def list_notification_events_page(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        page = max(1, int(page))
+        page_size = max(1, min(int(page_size), 100))
+        with self._lock:
+            with self._session() as connection:
+                total = int(
+                    connection.execute(
+                        "SELECT COUNT(*) AS total FROM notification_events"
+                    ).fetchone()["total"]
+                    or 0
+                )
+                rows = connection.execute(
+                    """
+                    SELECT
+                        events.*,
+                        streams.display_name,
+                        streams.anchor_name,
+                        streams.platform,
+                        streams.room_key
+                    FROM notification_events AS events
+                    LEFT JOIN streams ON streams.id = events.stream_id
+                    ORDER BY events.created_at DESC, events.id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (page_size, (page - 1) * page_size),
+                ).fetchall()
+                items = []
+                for row in rows:
+                    item = dict(row)
+                    item["delivered"] = bool(item["delivered"])
+                    items.append(item)
+
+        return items, {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": (total + page_size - 1) // page_size,
+        }
 
     def metrics(self) -> dict[str, Any]:
         with self._lock:

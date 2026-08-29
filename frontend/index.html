@@ -145,7 +145,6 @@
           >通知记录</button>
         </nav>
         <div class="topbar-actions">
-          <span class="connection-state"><span class="connection-dot"></span>本机运行</span>
           <button class="button button-secondary" data-action="settings">通知设置</button>
           <button class="button button-secondary" data-action="logout">退出登录</button>
           <button class="button button-primary" data-action="add-stream">
@@ -194,7 +193,6 @@
           <div class="section-heading">
             <div>
               <h2>我的直播间</h2>
-              <p>状态变化只通知一次，手动刷新不会触发重复通知。</p>
             </div>
             <button class="button button-secondary" data-action="check-all">
               立即检查全部
@@ -235,23 +233,19 @@
               <button class="button button-primary" data-action="add-stream">添加第一个直播间</button>
             </div>
           </div>
+          <div id="streamPagination" class="pagination" aria-label="直播间分页"></div>
         </section>
 
         <section id="view-notifications" class="view-section activity-section is-hidden" data-view-section="notifications" role="tabpanel" aria-labelledby="tab-notifications">
           <div class="section-heading section-heading-compact">
             <div>
               <h2>最近通知</h2>
-              <p>记录开播和下播通知是否送达。</p>
             </div>
           </div>
           <div id="eventList" class="event-list"></div>
+          <div id="eventPagination" class="pagination" aria-label="通知记录分页"></div>
         </section>
       </main>
-
-      <footer class="footer">
-        <span>LiveRadar</span>
-        <span>状态数据保存在本机</span>
-      </footer>
     </div>
 
     <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
