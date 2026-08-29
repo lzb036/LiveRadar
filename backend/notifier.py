@@ -56,7 +56,11 @@ def _send_wecom(webhook: str, title: str, message: str) -> None:
     payload = json.dumps(
         {
             "msgtype": "text",
-            "text": {"content": f"{title}\n{message}"},
+            "text": {
+                "content": "\n".join(
+                    part for part in (title, message) if part
+                )
+            },
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -87,4 +91,3 @@ def _request_json(request: Request) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise NotificationError("通知服务返回格式异常")
     return payload
-

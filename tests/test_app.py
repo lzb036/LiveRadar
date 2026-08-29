@@ -193,6 +193,12 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertTrue(events[0]["delivered"])
         self.assertEqual(events[0]["event_type"], "started")
+        self.assertEqual(
+            mock_send.call_args.args[1:],
+            ("（虎牙）测试主播开播了：已经开播", ""),
+        )
+        self.assertEqual(events[0]["title"], "（虎牙）测试主播开播了：已经开播")
+        self.assertEqual(events[0]["message"], "")
 
     @patch("backend.monitor.send_notification")
     @patch("backend.monitor.fetch_room")
@@ -307,6 +313,11 @@ class AppApiTests(unittest.TestCase):
             [event["event_type"] for event in events],
             ["started", "stopped"],
         )
+        stopped_event = next(
+            event for event in events if event["event_type"] == "stopped"
+        )
+        self.assertEqual(stopped_event["title"], "下播测试下播了")
+        self.assertEqual(stopped_event["message"], "")
 
     def test_settings_do_not_expose_secrets(self):
         headers = self.login_headers()

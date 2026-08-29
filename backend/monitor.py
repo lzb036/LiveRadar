@@ -163,13 +163,15 @@ class MonitorService:
                 and settings.get("notify_on_start") == "1"
             ):
                 delivered = self._deliver_transition(
-                    stream,
+                    updated,
                     snapshot,
                     event_type="started",
-                    title=f"{self._stream_name(stream)} 开播了",
-                    message=self._message_for(
-                        stream, snapshot, "已检测到直播开始"
+                    title=self._notification_text(
+                        updated,
+                        snapshot,
+                        event_type="started",
                     ),
+                    message="",
                 )
                 if delivered:
                     self.database.update_notification_state(
@@ -192,13 +194,15 @@ class MonitorService:
 
         if settings.get("notify_on_stop") == "1" and not stop_sent:
             delivered = self._deliver_transition(
-                stream,
+                updated,
                 snapshot,
                 event_type="stopped",
-                title=f"{self._stream_name(stream)} 已下播",
-                message=self._message_for(
-                    stream, snapshot, "直播状态已结束"
+                title=self._notification_text(
+                    updated,
+                    snapshot,
+                    event_type="stopped",
                 ),
+                message="",
             )
             if not delivered:
                 return
@@ -242,25 +246,30 @@ class MonitorService:
         return True
 
     @staticmethod
-    def _stream_name(stream: dict[str, Any]) -> str:
+    def _stream_name(
+        stream: dict[str, Any],
+        snapshot: RoomSnapshot | None = None,
+    ) -> str:
         return (
-            stream["display_name"]
-            or stream["anchor_name"]
+            str(stream.get("display_name") or "").strip()
+            or str(stream.get("anchor_name") or "").strip()
+            or str(snapshot.anchor_name if snapshot else "").strip()
             or f'{PLATFORM_LABELS.get(stream["platform"], stream["platform"])} {stream["room_key"]}'
         )
 
     @staticmethod
-    def _message_for(
+    def _notification_text(
         stream: dict[str, Any],
         snapshot: RoomSnapshot,
-        status_text: str,
+        *,
+        event_type: str,
     ) -> str:
-        platform = PLATFORM_LABELS.get(stream["platform"], stream["platform"])
-        lines = [
-            status_text,
-            f"平台：{platform}",
-            f"直播间：{stream['room_url']}",
-        ]
-        if snapshot.title:
-            lines.append(f"标题：{snapshot.title}")
-        return "\n".join(lines)
+        name = MonitorService._stream_name(stream, snapshot)
+        if event_type == "started":
+            platform = PLATFORM_LABELS.get(stream["platform"], stream["platform"])
+            title = f"（{platform}）{name}开播了"
+            live_title = str(snapshot.title or "").strip()
+            return f"{title}：{live_title}" if live_title else title
+        if event_type == "stopped":
+            return f"{name}下播了"
+        raise ValueError(f"不支持的通知事件：{event_type}")
