@@ -7,6 +7,7 @@ const state = {
   query: "",
   busy: false,
   editingStreamId: null,
+  authenticated: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -26,6 +27,9 @@ async function requestJSON(url, options = {}) {
     ...options,
   });
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 401 && !url.endsWith("/api/auth/login")) {
+    showAuth();
+  }
   if (!response.ok) {
     throw new Error(payload.error || `请求失败（${response.status}）`);
   }
@@ -191,6 +195,7 @@ function renderEvents() {
 }
 
 async function loadDashboard() {
+  if (!state.authenticated) return;
   try {
     const [dashboard, events] = await Promise.all([
       requestJSON("/api/streams"),
@@ -208,6 +213,21 @@ async function loadDashboard() {
   }
 }
 
+function showAuth(message = "") {
+  state.authenticated = false;
+  $("#appShell").classList.add("is-hidden");
+  $("#authScreen").classList.remove("is-hidden");
+  $("#loginError").textContent = message;
+  window.setTimeout(() => $("#loginUsername").focus(), 60);
+}
+
+function showApp() {
+  state.authenticated = true;
+  $("#loginError").textContent = "";
+  $("#authScreen").classList.add("is-hidden");
+  $("#appShell").classList.remove("is-hidden");
+}
+
 function showToast(message, type = "success") {
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
@@ -219,13 +239,59 @@ function showToast(message, type = "success") {
 function setButtonBusy(button, busy, busyText = "处理中") {
   if (!button) return;
   if (busy) {
-    button.dataset.originalText = button.textContent;
+    button.dataset.originalMarkup = button.innerHTML;
     button.textContent = busyText;
     button.disabled = true;
   } else {
-    button.textContent = button.dataset.originalText || button.textContent;
+    button.innerHTML = button.dataset.originalMarkup || button.innerHTML;
     button.disabled = false;
   }
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  const submit = $("#loginSubmit");
+  const formData = new FormData(event.currentTarget);
+  $("#loginError").textContent = "";
+  setButtonBusy(submit, true, "正在验证");
+  try {
+    await requestJSON("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: formData.get("username"),
+        password: formData.get("password"),
+      }),
+    });
+    showApp();
+    await loadDashboard();
+  } catch (error) {
+    $("#loginError").textContent = error.message || "登录失败，请检查账号和密码";
+    $("#loginPassword").select();
+  } finally {
+    setButtonBusy(submit, false);
+  }
+}
+
+async function logout() {
+  try {
+    await requestJSON("/api/auth/logout", { method: "POST", body: "{}" });
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    state.streams = [];
+    state.metrics = {};
+    state.events = [];
+    showAuth("你已退出登录");
+  }
+}
+
+function togglePassword(button) {
+  const input = $("#loginPassword");
+  const visible = input.type === "text";
+  input.type = visible ? "password" : "text";
+  button.textContent = visible ? "显示" : "隐藏";
+  button.setAttribute("aria-label", visible ? "显示密码" : "隐藏密码");
+  button.setAttribute("aria-pressed", String(!visible));
 }
 
 function openStreamDialog(stream = null) {
@@ -429,6 +495,8 @@ document.addEventListener("click", (event) => {
       if (stream) openStreamDialog(stream);
     }
     if (action === "settings") openSettingsDialog();
+    if (action === "logout") logout();
+    if (action === "toggle-password") togglePassword(actionTarget);
     if (action === "close-stream-dialog") $("#streamDialog").close();
     if (action === "close-settings-dialog") $("#settingsDialog").close();
     if (action === "check-all") checkAll(actionTarget);
@@ -450,6 +518,7 @@ document.addEventListener("click", (event) => {
 
 $("#streamForm").addEventListener("submit", submitStream);
 $("#settingsForm").addEventListener("submit", submitSettings);
+$("#loginForm").addEventListener("submit", submitLogin);
 $("#platformInput").addEventListener("change", updateRoomHint);
 $("#providerInput").addEventListener("change", updateProviderFields);
 $("#searchInput").addEventListener("input", (event) => {
@@ -457,5 +526,19 @@ $("#searchInput").addEventListener("input", (event) => {
   renderStreams();
 });
 
-loadDashboard();
+async function initialize() {
+  try {
+    const auth = await requestJSON("/api/auth/me");
+    if (auth.authenticated) {
+      showApp();
+      await loadDashboard();
+    } else {
+      showAuth();
+    }
+  } catch (error) {
+    showAuth("暂时无法连接服务器，请稍后重试");
+  }
+}
+
+initialize();
 window.setInterval(loadDashboard, 30000);

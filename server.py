@@ -19,12 +19,19 @@ APP = LiveMonitorApp(PROJECT_ROOT)
 class RequestHandler(BaseHTTPRequestHandler):
     server_version = "LiveRoomMonitor/1.0"
 
-    def _send_json(self, status: int, payload: object) -> None:
+    def _send_json(
+        self,
+        status: int,
+        payload: object,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(encoded)
 
@@ -52,8 +59,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         try:
             payload = self._read_json() if method in {"POST", "PUT", "PATCH"} else None
-            status, body = APP.handle_api(method, parsed.path, payload, parse_qs(parsed.query))
-            self._send_json(status, body)
+            response = APP.handle_api(
+                method,
+                parsed.path,
+                payload,
+                parse_qs(parsed.query),
+                dict(self.headers.items()),
+            )
+            self._send_json(response.status, response.body, response.headers)
         except json.JSONDecodeError:
             self._send_json(400, {"error": "请求 JSON 格式不正确"})
         except NotificationError as exc:
@@ -105,7 +118,13 @@ def main() -> None:
     port = int(os.environ.get("LIVE_MONITOR_PORT", "8765"))
     httpd = ThreadingHTTPServer((host, port), RequestHandler)
     APP.start()
-    print(f"直播间监测已启动：http://{host}:{port}")
+    print(f"开播雷达已启动：http://{host}:{port}")
+    if APP.auth.initial_credentials:
+        print(
+            "首次登录账号："
+            f"{APP.auth.initial_credentials.username} / "
+            f"{APP.auth.initial_credentials.password}"
+        )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

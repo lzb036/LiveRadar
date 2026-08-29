@@ -6,5 +6,5 @@ __pycache__/
 venv/
 data/*.db
 data/*.db-*
+deploy/liveradar.env
 .impeccable/
-

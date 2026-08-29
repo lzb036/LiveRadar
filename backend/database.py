@@ -86,6 +86,13 @@ class Database:
                         value TEXT NOT NULL
                     );
 
+                    CREATE TABLE IF NOT EXISTS auth_users (
+                        username TEXT PRIMARY KEY,
+                        password_hash TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+
                     CREATE TABLE IF NOT EXISTS notification_events (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         stream_id INTEGER,
@@ -119,6 +126,29 @@ class Database:
                         "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
                         (key, value),
                     )
+
+    def get_auth_user(self, username: str) -> str | None:
+        with self._lock:
+            with self._session() as connection:
+                row = connection.execute(
+                    "SELECT password_hash FROM auth_users WHERE username = ?",
+                    (username,),
+                ).fetchone()
+                return str(row["password_hash"]) if row else None
+
+    def create_auth_user(self, username: str, password_hash: str) -> None:
+        now = utc_now()
+        with self._lock:
+            with self._session() as connection:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO auth_users(
+                        username, password_hash, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (username, password_hash, now, now),
+                )
 
     @staticmethod
     def _serialize_stream(row: sqlite3.Row) -> dict[str, Any]:

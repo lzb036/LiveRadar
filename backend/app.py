@@ -2,14 +2,27 @@ from __future__ import annotations
 
 import json
 import mimetypes
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
+from .auth import AuthService
 from .database import Database, DuplicateStreamError
 from .monitor import MonitorService
 from .notifier import mask_secret
 from .platforms import parse_room_reference
+
+
+@dataclass(frozen=True)
+class ApiResponse:
+    status: int
+    body: dict[str, Any]
+    headers: dict[str, str] = field(default_factory=dict)
+
+    def __iter__(self):
+        yield self.status
+        yield self.body
 
 
 class LiveMonitorApp:
@@ -17,6 +30,8 @@ class LiveMonitorApp:
         self.project_root = Path(project_root)
         self.frontend_dir = self.project_root / "frontend"
         self.database = Database(self.project_root / "data" / "monitor.db")
+        self.auth = AuthService(self.database)
+        self.auth.bootstrap()
         self.monitor = MonitorService(self.database)
 
     def start(self) -> None:
@@ -31,10 +46,59 @@ class LiveMonitorApp:
         path: str,
         payload: dict[str, Any] | None,
         query: dict[str, list[str]],
-    ) -> tuple[int, dict[str, Any]]:
+        headers: dict[str, str] | None = None,
+    ) -> ApiResponse:
         body = payload or {}
+        request_headers = headers or {}
+        cookie_header = request_headers.get("Cookie", "")
+        secure_cookie = request_headers.get("X-Forwarded-Proto", "http") == "https"
+
+        public_paths = {
+            "/api/health",
+            "/api/auth/login",
+            "/api/auth/me",
+            "/api/auth/logout",
+        }
+        if path not in public_paths and self.auth.current_user(cookie_header) is None:
+            return self._response(401, {"error": "请先登录"})
+
         if path == "/api/health" and method == "GET":
-            return 200, {"ok": True, "service": "live-room-monitor"}
+            return self._response(200, {"ok": True, "service": "live-room-monitor"})
+
+        if path == "/api/auth/me" and method == "GET":
+            username = self.auth.current_user(cookie_header)
+            return self._response(
+                200,
+                {"authenticated": username is not None, "username": username},
+            )
+
+        if path == "/api/auth/login" and method == "POST":
+            username = str(body.get("username") or "").strip()
+            password = str(body.get("password") or "")
+            if not self.auth.verify_password(username, password):
+                return self._response(401, {"error": "账号或密码不正确"})
+            token = self.auth.create_session(username)
+            return self._response(
+                200,
+                {"authenticated": True, "username": username},
+                {
+                    "Set-Cookie": self.auth.session_cookie(
+                        token, secure=secure_cookie
+                    )
+                },
+            )
+
+        if path == "/api/auth/logout" and method == "POST":
+            self.auth.revoke_session(cookie_header)
+            return self._response(
+                200,
+                {"authenticated": False},
+                {
+                    "Set-Cookie": self.auth.clear_session_cookie(
+                        secure=secure_cookie
+                    )
+                },
+            )
 
         if path == "/api/streams" and method == "GET":
             return self._dashboard_payload()
@@ -47,7 +111,7 @@ class LiveMonitorApp:
             return self._dashboard_payload()
 
         if path == "/api/settings" and method == "GET":
-            return 200, {"settings": self._public_settings()}
+            return self._response(200, {"settings": self._public_settings()})
 
         if path == "/api/settings" and method == "PUT":
             return self._update_settings(body)
@@ -58,11 +122,14 @@ class LiveMonitorApp:
                 limit = int(raw_limit)
             except ValueError:
                 limit = 8
-            return 200, {"items": self.database.list_notification_events(limit)}
+            return self._response(
+                200,
+                {"items": self.database.list_notification_events(limit)},
+            )
 
         if path == "/api/notifications/test" and method == "POST":
             self.monitor.send_test_notification()
-            return 200, {"message": "测试通知已发送"}
+            return self._response(200, {"message": "测试通知已发送"})
 
         parts = [part for part in path.split("/") if part]
         if len(parts) == 4 and parts[:2] == ["api", "streams"]:
@@ -71,9 +138,9 @@ class LiveMonitorApp:
             if action == "check" and method == "POST":
                 stream = self.monitor.check_stream(stream_id, allow_notify=True)
                 if stream is None:
-                    return 404, {"error": "直播间不存在"}
-                return 200, {"stream": stream}
-            return 404, {"error": "接口不存在"}
+                    return self._response(404, {"error": "直播间不存在"})
+                return self._response(200, {"stream": stream})
+            return self._response(404, {"error": "接口不存在"})
 
         if len(parts) == 3 and parts[:2] == ["api", "streams"]:
             stream_id = self._parse_stream_id(parts[2])
@@ -81,10 +148,10 @@ class LiveMonitorApp:
                 return self._update_stream(stream_id, body)
             if method == "DELETE":
                 if not self.database.delete_stream(stream_id):
-                    return 404, {"error": "直播间不存在"}
-                return 200, {"message": "直播间已删除"}
+                    return self._response(404, {"error": "直播间不存在"})
+                return self._response(200, {"message": "直播间已删除"})
 
-        return 404, {"error": "接口不存在"}
+        return self._response(404, {"error": "接口不存在"})
 
     def static_file(self, path: str) -> tuple[int, str, bytes]:
         relative = path.lstrip("/") or "index.html"
@@ -104,14 +171,14 @@ class LiveMonitorApp:
             content_type = f"{content_type}; charset=utf-8"
         return 200, content_type, candidate.read_bytes()
 
-    def _dashboard_payload(self) -> tuple[int, dict[str, Any]]:
-        return 200, {
+    def _dashboard_payload(self) -> ApiResponse:
+        return self._response(200, {
             "items": self.database.list_streams(),
             "metrics": self.database.metrics(),
             "settings": self._public_settings(),
-        }
+        })
 
-    def _create_stream(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    def _create_stream(self, body: dict[str, Any]) -> ApiResponse:
         platform = str(body.get("platform") or "")
         room_input = str(body.get("room_url") or "")
         profile_url = str(body.get("profile_url") or "")
@@ -127,17 +194,17 @@ class LiveMonitorApp:
                 reference.profile_url,
             )
         except DuplicateStreamError as exc:
-            return 409, {"error": str(exc)}
+            return self._response(409, {"error": str(exc)})
 
         stream = self.monitor.check_stream(stream_id, allow_notify=False)
-        return 201, {"stream": stream}
+        return self._response(201, {"stream": stream})
 
     def _update_stream(
         self, stream_id: int, body: dict[str, Any]
-    ) -> tuple[int, dict[str, Any]]:
+    ) -> ApiResponse:
         current = self.database.get_stream(stream_id)
         if current is None:
-            return 404, {"error": "直播间不存在"}
+            return self._response(404, {"error": "直播间不存在"})
         display_name = body.get("display_name")
         if display_name is not None:
             display_name = str(display_name).strip()[:100]
@@ -167,20 +234,20 @@ class LiveMonitorApp:
                     profile_url=reference.profile_url,
                 )
             except DuplicateStreamError as exc:
-                return 409, {"error": str(exc)}
+                return self._response(409, {"error": str(exc)})
             if stream is None:
-                return 404, {"error": "直播间不存在"}
+                return self._response(404, {"error": "直播间不存在"})
             stream = self.monitor.check_stream(stream_id, allow_notify=False)
-            return 200, {"stream": stream}
+            return self._response(200, {"stream": stream})
 
         stream = self.database.update_stream(
             stream_id,
             display_name=display_name,
             enabled=enabled,
         )
-        return 200, {"stream": stream}
+        return self._response(200, {"stream": stream})
 
-    def _update_settings(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    def _update_settings(self, body: dict[str, Any]) -> ApiResponse:
         current = self.database.get_settings()
         provider = str(body.get("notify_provider", current["notify_provider"]))
         if provider not in {"none", "serverchan", "wecom"}:
@@ -207,7 +274,7 @@ class LiveMonitorApp:
             if key in body and str(body[key]).strip():
                 updates[key] = str(body[key]).strip()
         settings = self.database.save_settings(updates)
-        return 200, {"settings": self._public_settings(settings)}
+        return self._response(200, {"settings": self._public_settings(settings)})
 
     def _public_settings(self, settings: dict[str, str] | None = None) -> dict[str, Any]:
         settings = settings or self.database.get_settings()
@@ -241,3 +308,11 @@ class LiveMonitorApp:
         if isinstance(value, str):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
+
+    @staticmethod
+    def _response(
+        status: int,
+        body: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> ApiResponse:
+        return ApiResponse(status, body, headers or {})

@@ -16,7 +16,100 @@
       FORM: 操作型监测工作台，优先保证批量扫描、异常辨识和低打扰操作。
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
     -->
-    <div class="app-shell">
+    <div id="authScreen" class="auth-screen">
+      <div class="auth-frame">
+        <section class="auth-intro" aria-label="开播雷达介绍">
+          <div class="auth-brand">
+            <span class="brand-mark">LM</span>
+            <div>
+              <strong>开播雷达</strong>
+              <span>LiveRadar</span>
+            </div>
+          </div>
+          <div class="auth-intro-copy">
+            <h1>你的关注，<br />一眼就能看到。</h1>
+            <p>统一追踪多个平台的直播状态，在主播开播时及时收到提醒。</p>
+          </div>
+          <div class="auth-platforms" aria-label="支持的平台">
+            <div class="auth-platform-row">
+              <span class="auth-platform-index">01</span>
+              <span>Bilibili</span>
+              <span class="auth-platform-state">已接入</span>
+            </div>
+            <div class="auth-platform-row">
+              <span class="auth-platform-index">02</span>
+              <span>虎牙</span>
+              <span class="auth-platform-state">已接入</span>
+            </div>
+            <div class="auth-platform-row">
+              <span class="auth-platform-index">03</span>
+              <span>抖音</span>
+              <span class="auth-platform-state">已接入</span>
+            </div>
+          </div>
+          <div class="auth-intro-footer">
+            <span>PRIVATE WATCHDESK</span>
+            <span>本机数据 · 私人使用</span>
+          </div>
+        </section>
+
+        <section class="auth-panel">
+          <div class="auth-panel-meta">
+            <span>安全登录</span>
+            <span>SESSION 01</span>
+          </div>
+          <form id="loginForm" class="login-form">
+            <div class="login-heading">
+              <span class="login-rule"></span>
+              <h2>进入监测台</h2>
+              <p>登录后管理直播间列表和通知设置。</p>
+            </div>
+            <label class="login-field">
+              <span>账号</span>
+              <input
+                id="loginUsername"
+                name="username"
+                type="text"
+                autocomplete="username"
+                required
+                placeholder="输入登录账号"
+              />
+            </label>
+            <label class="login-field">
+              <span>密码</span>
+              <div class="password-input">
+                <input
+                  id="loginPassword"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                  placeholder="输入登录密码"
+                />
+                <button
+                  class="password-toggle"
+                  type="button"
+                  data-action="toggle-password"
+                  aria-label="显示密码"
+                  aria-pressed="false"
+                >显示</button>
+              </div>
+            </label>
+            <div id="loginError" class="login-error" role="alert" aria-live="polite"></div>
+            <button id="loginSubmit" class="login-submit" type="submit">
+              <span>进入开播雷达</span>
+              <span class="login-submit-arrow" aria-hidden="true">↗</span>
+            </button>
+          </form>
+          <div class="auth-panel-footer">
+            <span>会话有效期 7 天</span>
+            <span>HTTPS 加密连接</span>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div id="appShell" class="app-shell is-hidden">
       <header class="topbar">
         <a class="brand" href="./" aria-label="开播雷达首页">
           <span class="brand-mark">LM</span>
@@ -25,6 +118,7 @@
         <div class="topbar-actions">
           <span class="connection-state"><span class="connection-dot"></span>本机运行</span>
           <button class="button button-secondary" data-action="settings">通知设置</button>
+          <button class="button button-secondary" data-action="logout">退出登录</button>
           <button class="button button-primary" data-action="add-stream">
             <span aria-hidden="true">+</span>添加直播间
           </button>

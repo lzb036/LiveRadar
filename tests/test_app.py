@@ -15,8 +15,49 @@ class AppApiTests(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
+    def login_headers(self):
+        response = self.app.handle_api(
+            "POST",
+            "/api/auth/login",
+            {
+                "username": self.app.auth.username,
+                "password": self.app.auth.initial_credentials.password,
+            },
+            {},
+            {"X-Forwarded-Proto": "https"},
+        )
+        self.assertEqual(response.status, 200)
+        return {"Cookie": response.headers["Set-Cookie"].split(";", 1)[0]}
+
+    def test_authentication_flow(self):
+        status, payload = self.app.handle_api("GET", "/api/streams", None, {})
+        self.assertEqual(status, 401)
+        self.assertEqual(payload["error"], "请先登录")
+
+        headers = self.login_headers()
+        response = self.app.handle_api(
+            "GET",
+            "/api/auth/me",
+            None,
+            {},
+            headers,
+        )
+        self.assertTrue(response.body["authenticated"])
+        self.assertEqual(response.body["username"], self.app.auth.username)
+
+        status, payload = self.app.handle_api(
+            "POST",
+            "/api/auth/logout",
+            None,
+            {},
+            headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["authenticated"])
+
     @patch("backend.monitor.fetch_room")
     def test_create_update_and_delete_stream(self, mock_fetch):
+        headers = self.login_headers()
         mock_fetch.return_value = RoomSnapshot(
             status="offline",
             title="暂未开播",
@@ -31,6 +72,7 @@ class AppApiTests(unittest.TestCase):
                 "display_name": "晚间关注",
             },
             {},
+            headers,
         )
         self.assertEqual(status, 201)
         stream_id = payload["stream"]["id"]
@@ -45,6 +87,7 @@ class AppApiTests(unittest.TestCase):
                 "display_name": "修改后的关注",
             },
             {},
+            headers,
         )
         self.assertEqual(status, 200)
         self.assertEqual(payload["stream"]["platform"], "huya")
@@ -57,6 +100,7 @@ class AppApiTests(unittest.TestCase):
             f"/api/streams/{stream_id}",
             {"enabled": False},
             {},
+            headers,
         )
         self.assertEqual(status, 200)
         self.assertFalse(payload["stream"]["enabled"])
@@ -66,12 +110,14 @@ class AppApiTests(unittest.TestCase):
             f"/api/streams/{stream_id}",
             None,
             {},
+            headers,
         )
         self.assertEqual(status, 200)
 
     @patch("backend.monitor.send_notification")
     @patch("backend.monitor.fetch_room")
     def test_live_transition_records_delivered_event(self, mock_fetch, mock_send):
+        headers = self.login_headers()
         mock_fetch.return_value = RoomSnapshot(
             status="offline",
             title="还没开始",
@@ -86,6 +132,7 @@ class AppApiTests(unittest.TestCase):
                 "display_name": "测试主播",
             },
             {},
+            headers,
         )
         stream_id = payload["stream"]["id"]
         mock_fetch.return_value = RoomSnapshot(
@@ -99,6 +146,7 @@ class AppApiTests(unittest.TestCase):
             f"/api/streams/{stream_id}/check",
             None,
             {},
+            headers,
         )
         self.assertEqual(status, 200)
         mock_send.assert_called_once()
@@ -108,6 +156,7 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(events[0]["event_type"], "started")
 
     def test_settings_do_not_expose_secrets(self):
+        headers = self.login_headers()
         status, _ = self.app.handle_api(
             "PUT",
             "/api/settings",
@@ -118,9 +167,16 @@ class AppApiTests(unittest.TestCase):
                 "notify_on_start": "false",
             },
             {},
+            headers,
         )
         self.assertEqual(status, 200)
-        status, payload = self.app.handle_api("GET", "/api/settings", None, {})
+        status, payload = self.app.handle_api(
+            "GET",
+            "/api/settings",
+            None,
+            {},
+            headers,
+        )
         self.assertEqual(status, 200)
         settings = payload["settings"]
         self.assertFalse(settings["notify_on_start"])
