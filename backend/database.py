@@ -13,6 +13,7 @@ DEFAULT_SETTINGS = {
     "notify_provider": "serverchan",
     "serverchan_sendkey": "",
     "wecom_webhook": "",
+    "wxpusher_spt": "",
     "notify_on_start": "1",
     "notify_on_stop": "1",
 }

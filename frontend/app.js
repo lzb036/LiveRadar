@@ -617,12 +617,16 @@ async function openSettingsDialog() {
     $("#providerInput").value = settings.notify_provider ?? "none";
     $("#serverchanInput").value = "";
     $("#wecomInput").value = "";
+    $("#wxpusherSptInput").value = "";
     $("#serverchanState").textContent = settings.serverchan_sendkey_set
       ? `当前：${settings.serverchan_sendkey_masked}`
       : "尚未设置";
     $("#wecomState").textContent = settings.wecom_webhook_set
       ? `当前：${settings.wecom_webhook_masked}`
       : "尚未设置";
+    $("#wxpusherSptState").textContent = settings.wxpusher_spt_set
+      ? `当前已设置 ${settings.wxpusher_spt_count || 1} 个 SPT`
+      : "填写以 SPT_ 开头的个人推送令牌。";
     $("#notifyStartInput").checked = settings.notify_on_start !== false;
     $("#notifyStopInput").checked = settings.notify_on_stop === true;
     updateProviderFields();
@@ -636,6 +640,7 @@ function updateProviderFields() {
   const provider = $("#providerInput").value;
   $("#serverchanFields").classList.toggle("is-hidden", provider !== "serverchan");
   $("#wecomFields").classList.toggle("is-hidden", provider !== "wecom");
+  $("#wxpusherFields").classList.toggle("is-hidden", provider !== "wxpusher");
 }
 
 async function submitSettings(event) {
@@ -650,6 +655,7 @@ async function submitSettings(event) {
         notify_provider: $("#providerInput").value,
         serverchan_sendkey: $("#serverchanInput").value,
         wecom_webhook: $("#wecomInput").value,
+        wxpusher_spt: $("#wxpusherSptInput").value,
         notify_on_start: $("#notifyStartInput").checked,
         notify_on_stop: $("#notifyStopInput").checked,
       }),

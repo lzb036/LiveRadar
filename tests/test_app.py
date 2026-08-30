@@ -365,6 +365,37 @@ class AppApiTests(unittest.TestCase):
         self.assertTrue(settings["serverchan_sendkey_set"])
         self.assertNotIn("SCT-test-secret", str(settings))
 
+    def test_wxpusher_settings_are_supported_without_exposing_spt(self):
+        headers = self.login_headers()
+        spt = "SPT_sensitive-test-token"
+        status, _ = self.app.handle_api(
+            "PUT",
+            "/api/settings",
+            {
+                "monitor_interval_seconds": 60,
+                "notify_provider": "wxpusher",
+                "wxpusher_spt": spt,
+            },
+            {},
+            headers,
+        )
+
+        self.assertEqual(status, 200)
+        status, payload = self.app.handle_api(
+            "GET",
+            "/api/settings",
+            None,
+            {},
+            headers,
+        )
+
+        self.assertEqual(status, 200)
+        settings = payload["settings"]
+        self.assertEqual(settings["notify_provider"], "wxpusher")
+        self.assertTrue(settings["wxpusher_spt_set"])
+        self.assertEqual(settings["wxpusher_spt_count"], 1)
+        self.assertNotIn(spt, str(settings))
+
     def test_clear_notification_events(self):
         headers = self.login_headers()
         for index in range(2):

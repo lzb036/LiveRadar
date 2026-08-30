@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
@@ -25,6 +26,9 @@ def send_notification(settings: dict[str, str], title: str, message: str) -> Non
         return
     if provider == "wecom":
         _send_wecom(settings.get("wecom_webhook", ""), title, message)
+        return
+    if provider == "wxpusher":
+        _send_wxpusher(settings.get("wxpusher_spt", ""), title, message)
         return
     if provider == "none":
         raise NotificationError("尚未选择微信通知方式")
@@ -76,6 +80,57 @@ def _send_wecom(webhook: str, title: str, message: str) -> None:
     response = _request_json(request)
     if response.get("errcode", 0) != 0:
         raise NotificationError(str(response.get("errmsg") or "企业微信发送失败"))
+
+
+def _send_wxpusher(
+    raw_spts: str,
+    title: str,
+    message: str,
+) -> None:
+    spts = parse_wxpusher_spts(raw_spts)
+    if not spts:
+        raise NotificationError("请先填写 WxPusher SPT")
+    if any(not spt.startswith("SPT_") for spt in spts):
+        raise NotificationError("WxPusher SPT 格式不正确")
+    if len(spts) > 10:
+        raise NotificationError("WxPusher SPT 最多支持 10 个")
+
+    content = "\n".join(part for part in (title, message) if part)
+    payload_data: dict[str, Any] = {
+        "content": content,
+        "summary": title[:100],
+        "contentType": 1,
+    }
+    if len(spts) == 1:
+        payload_data["spt"] = spts[0]
+    else:
+        payload_data["sptList"] = spts
+    payload = json.dumps(
+        payload_data,
+        ensure_ascii=False,
+    ).encode("utf-8")
+    request = Request(
+        "https://wxpusher.zjiecode.com/api/send/message/simple-push",
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "LiveRoomMonitor/1.0",
+        },
+    )
+    response = _request_json(request)
+    if response.get("code") != 1000:
+        raise NotificationError(
+            str(response.get("msg") or response.get("message") or "WxPusher 发送失败")
+        )
+
+
+def parse_wxpusher_spts(raw_spts: str) -> list[str]:
+    return [
+        spt
+        for spt in re.split(r"[,，\s]+", raw_spts or "")
+        if spt
+    ]
 
 
 def _request_json(request: Request) -> dict[str, Any]:

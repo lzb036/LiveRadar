@@ -10,7 +10,7 @@ from urllib.parse import parse_qs
 from .auth import AuthService
 from .database import Database, DuplicateStreamError
 from .monitor import MonitorService
-from .notifier import mask_secret
+from .notifier import mask_secret, parse_wxpusher_spts
 from .platforms import parse_room_reference
 
 
@@ -285,7 +285,7 @@ class LiveMonitorApp:
     def _update_settings(self, body: dict[str, Any]) -> ApiResponse:
         current = self.database.get_settings()
         provider = str(body.get("notify_provider", current["notify_provider"]))
-        if provider not in {"none", "serverchan", "wecom"}:
+        if provider not in {"none", "serverchan", "wecom", "wxpusher"}:
             raise ValueError("通知方式不正确")
 
         try:
@@ -305,7 +305,11 @@ class LiveMonitorApp:
             if self._as_bool(body.get("notify_on_stop"), current["notify_on_stop"] == "1")
             else "0",
         }
-        for key in ("serverchan_sendkey", "wecom_webhook"):
+        for key in (
+            "serverchan_sendkey",
+            "wecom_webhook",
+            "wxpusher_spt",
+        ):
             if key in body and str(body[key]).strip():
                 updates[key] = str(body[key]).strip()
         settings = self.database.save_settings(updates)
@@ -322,6 +326,10 @@ class LiveMonitorApp:
             "serverchan_sendkey_masked": mask_secret(settings.get("serverchan_sendkey", "")),
             "wecom_webhook_set": bool(settings.get("wecom_webhook")),
             "wecom_webhook_masked": mask_secret(settings.get("wecom_webhook", "")),
+            "wxpusher_spt_set": bool(parse_wxpusher_spts(settings.get("wxpusher_spt", ""))),
+            "wxpusher_spt_count": len(
+                parse_wxpusher_spts(settings.get("wxpusher_spt", ""))
+            ),
         }
 
     @staticmethod

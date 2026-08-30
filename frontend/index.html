@@ -343,6 +343,7 @@
           <label class="field">
             <span>微信通知方式</span>
             <select id="providerInput" name="notify_provider">
+              <option value="wxpusher">微信（WxPusher）</option>
               <option value="serverchan">微信（Server酱）</option>
               <option value="wecom">企业微信机器人</option>
               <option value="none">暂不通知</option>
@@ -360,6 +361,13 @@
               <span>企业微信机器人 Webhook</span>
               <input id="wecomInput" name="wecom_webhook" type="password" autocomplete="new-password" placeholder="留空表示保留已保存的 Webhook" />
               <small id="wecomState"></small>
+            </label>
+          </div>
+          <div id="wxpusherFields" class="provider-fields is-hidden">
+            <label class="field">
+              <span>WxPusher SPT</span>
+              <input id="wxpusherSptInput" name="wxpusher_spt" type="password" autocomplete="new-password" placeholder="留空表示保留已保存的 SPT" />
+              <small id="wxpusherSptState">填写以 SPT_ 开头的个人推送令牌。</small>
             </label>
           </div>
           <div class="switch-list">
