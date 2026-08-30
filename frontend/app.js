@@ -176,69 +176,166 @@ function streamOpenLabel(stream) {
   return "打开";
 }
 
+function streamRenderSignature(stream) {
+  return JSON.stringify([
+    stream.id,
+    stream.platform,
+    stream.room_key,
+    stream.room_url,
+    stream.display_name,
+    stream.anchor_name,
+    stream.enabled,
+    stream.status,
+    stream.error_message,
+    stream.live_started_at,
+    stream.live_duration_seconds,
+    stream.last_checked_at,
+    stream.title,
+  ]);
+}
+
+function streamRowMarkup(stream) {
+  const meta = statusMeta(stream);
+  const platform = Object.hasOwn(platformLabels, stream.platform)
+    ? stream.platform
+    : "bilibili";
+  const title = stream.title || "暂无直播标题";
+  const name = stream.display_name || stream.anchor_name || `${platformLabels[stream.platform]} 房间`;
+  const detail = stream.anchor_name && stream.display_name
+    ? stream.anchor_name
+    : `房间 ID ${stream.room_key}`;
+  const openUrl = streamOpenUrl(stream);
+  const openLabel = streamOpenLabel(stream);
+  const liveStartedAt = stream.live_started_at || "";
+  const liveSessionActive = streamHasLiveSession(stream);
+  const hasError = meta.key === "error";
+  return `
+    <td data-stream-field="room">
+      <div class="room-cell">
+        <strong data-stream-field="name">${escapeHtml(name)}</strong>
+        <span data-stream-field="detail">${escapeHtml(detail)}</span>
+        <span class="row-error${hasError ? "" : " is-hidden"}" data-stream-field="error">${escapeHtml(meta.detail)}</span>
+      </div>
+    </td>
+    <td data-stream-field="platform">
+      <span class="platform-badge platform-${platform}" data-stream-field="platform-badge">
+        <span class="platform-icon platform-icon-${platform}" data-stream-field="platform-icon" aria-hidden="true">${platformMarks[platform]}</span>
+        <span data-stream-field="platform-label">${escapeHtml(platformLabels[platform])}</span>
+      </span>
+    </td>
+    <td data-stream-field="status">
+      <span class="status-badge status-${meta.key}" data-stream-field="status-badge">
+        <span class="status-dot" data-stream-field="status-dot"></span><span data-stream-field="status-label">${escapeHtml(meta.label)}</span>
+      </span>
+    </td>
+    <td class="start-time-cell" data-stream-field="start-time">${escapeHtml(formatDateTime(liveStartedAt))}</td>
+    <td
+      class="duration-cell"
+      data-stream-field="duration"
+      data-live-started-at="${escapeHtml(liveStartedAt)}"
+      data-live-active="${liveSessionActive}"
+    >${escapeHtml(formatStreamDuration(stream))}</td>
+    <td class="time-cell" data-stream-field="checked-at">${escapeHtml(formatTime(stream.last_checked_at))}</td>
+    <td class="title-cell" data-stream-field="title" title="${escapeHtml(title)}">${escapeHtml(title)}</td>
+    <td>
+      <div class="row-actions">
+        <a class="table-action" data-stream-field="open-link" href="${escapeHtml(openUrl)}" target="_blank" rel="noreferrer">${openLabel}</a>
+        <button class="table-action" data-action="edit-stream" data-id="${stream.id}">编辑</button>
+        <button class="table-action" data-action="check-stream" data-id="${stream.id}">检查</button>
+        <button class="table-action" data-stream-field="toggle" data-action="toggle-stream" data-id="${stream.id}">${stream.enabled ? "停用" : "启用"}</button>
+        <button class="table-action action-danger" data-action="delete-stream" data-id="${stream.id}">删除</button>
+      </div>
+    </td>
+  `;
+}
+
+function updateStreamRow(row, stream) {
+  const meta = statusMeta(stream);
+  const platform = Object.hasOwn(platformLabels, stream.platform)
+    ? stream.platform
+    : "bilibili";
+  const title = stream.title || "暂无直播标题";
+  const name = stream.display_name || stream.anchor_name || `${platformLabels[stream.platform]} 房间`;
+  const detail = stream.anchor_name && stream.display_name
+    ? stream.anchor_name
+    : `房间 ID ${stream.room_key}`;
+  const openUrl = streamOpenUrl(stream);
+  const openLabel = streamOpenLabel(stream);
+  const liveStartedAt = stream.live_started_at || "";
+  const liveSessionActive = streamHasLiveSession(stream);
+  const field = (name) => row.querySelector(`[data-stream-field="${name}"]`);
+
+  field("name").textContent = name;
+  field("detail").textContent = detail;
+  const error = field("error");
+  error.textContent = meta.detail;
+  error.classList.toggle("is-hidden", meta.key !== "error");
+
+  const platformBadge = field("platform-badge");
+  platformBadge.className = `platform-badge platform-${platform}`;
+  field("platform-icon").className = `platform-icon platform-icon-${platform}`;
+  field("platform-icon").textContent = platformMarks[platform];
+  field("platform-label").textContent = platformLabels[platform];
+
+  const statusBadge = field("status-badge");
+  statusBadge.className = `status-badge status-${meta.key}`;
+  field("status-dot").className = `status-dot`;
+  field("status-label").textContent = meta.label;
+
+  field("start-time").textContent = formatDateTime(liveStartedAt);
+  const duration = field("duration");
+  duration.dataset.liveStartedAt = liveStartedAt;
+  duration.dataset.liveActive = String(liveSessionActive);
+  duration.textContent = formatStreamDuration(stream);
+  field("checked-at").textContent = formatTime(stream.last_checked_at);
+  const titleCell = field("title");
+  titleCell.textContent = title;
+  titleCell.title = title;
+  const openLink = field("open-link");
+  openLink.href = openUrl;
+  openLink.textContent = openLabel;
+  field("toggle").textContent = stream.enabled ? "停用" : "启用";
+}
+
 function renderStreams() {
   const tbody = $("#streamRows");
   const emptyState = $("#emptyState");
   const filtered = state.streams;
-  tbody.innerHTML = filtered
-    .map((stream, index) => {
-      const meta = statusMeta(stream);
-      const platform = Object.hasOwn(platformLabels, stream.platform)
-        ? stream.platform
-        : "bilibili";
-      const title = stream.title || "暂无直播标题";
-      const name = stream.display_name || stream.anchor_name || `${platformLabels[stream.platform]} 房间`;
-      const detail = stream.anchor_name && stream.display_name
-        ? stream.anchor_name
-        : `房间 ID ${stream.room_key}`;
-      const openUrl = streamOpenUrl(stream);
-      const openLabel = streamOpenLabel(stream);
-      const liveStartedAt = stream.live_started_at || "";
-      const liveSessionActive = streamHasLiveSession(stream);
-      const error = meta.key === "error"
-        ? `<span class="row-error">${escapeHtml(meta.detail)}</span>`
-        : "";
-      return `
-        <tr class="stream-row" style="--row-index: ${index}">
-          <td>
-            <div class="room-cell">
-              <strong>${escapeHtml(name)}</strong>
-              <span>${escapeHtml(detail)}</span>
-              ${error}
-            </div>
-          </td>
-          <td>
-            <span class="platform-badge platform-${platform}">
-              <span class="platform-icon platform-icon-${platform}" aria-hidden="true">${platformMarks[platform]}</span>
-              <span>${escapeHtml(platformLabels[platform])}</span>
-            </span>
-          </td>
-          <td>
-            <span class="status-badge status-${meta.key}">
-              <span class="status-dot"></span>${escapeHtml(meta.label)}
-            </span>
-          </td>
-          <td class="start-time-cell">${escapeHtml(formatDateTime(liveStartedAt))}</td>
-          <td
-            class="duration-cell"
-            data-live-started-at="${escapeHtml(liveStartedAt)}"
-            data-live-active="${liveSessionActive}"
-          >${escapeHtml(formatStreamDuration(stream))}</td>
-          <td class="time-cell">${escapeHtml(formatTime(stream.last_checked_at))}</td>
-          <td class="title-cell" title="${escapeHtml(title)}">${escapeHtml(title)}</td>
-          <td>
-            <div class="row-actions">
-              <a class="table-action" href="${escapeHtml(openUrl)}" target="_blank" rel="noreferrer">${openLabel}</a>
-              <button class="table-action" data-action="edit-stream" data-id="${stream.id}">编辑</button>
-              <button class="table-action" data-action="check-stream" data-id="${stream.id}">检查</button>
-              <button class="table-action" data-action="toggle-stream" data-id="${stream.id}">${stream.enabled ? "停用" : "启用"}</button>
-              <button class="table-action action-danger" data-action="delete-stream" data-id="${stream.id}">删除</button>
-            </div>
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
+  const existingRows = new Map(
+    Array.from(tbody.children).map((row) => [row.dataset.streamId, row]),
+  );
+  const renderedIds = new Set();
+
+  filtered.forEach((stream, index) => {
+    const streamId = String(stream.id);
+    let row = existingRows.get(streamId);
+    if (!row) {
+      row = document.createElement("tr");
+      row.className = "stream-row";
+      row.dataset.streamId = streamId;
+    }
+
+    row.style.setProperty("--row-index", index);
+    const signature = streamRenderSignature(stream);
+    if (!row.dataset.renderSignature) {
+      row.innerHTML = streamRowMarkup(stream);
+    } else if (row.dataset.renderSignature !== signature) {
+      updateStreamRow(row, stream);
+    }
+    row.dataset.renderSignature = signature;
+    renderedIds.add(streamId);
+
+    const currentRow = tbody.children[index];
+    if (currentRow !== row) {
+      tbody.insertBefore(row, currentRow || null);
+    }
+  });
+
+  Array.from(tbody.children).forEach((row) => {
+    if (!renderedIds.has(row.dataset.streamId)) {
+      row.remove();
+    }
+  });
 
   const hasStreams = Number(state.metrics?.total || 0) > 0;
   const hasResults = filtered.length > 0;
@@ -258,6 +355,12 @@ function renderStreams() {
 function renderEvents() {
   const target = $("#eventList");
   updateNotificationActions();
+  const signature = JSON.stringify(state.events);
+  if (target.dataset.renderSignature === signature) {
+    renderPagination("#eventPagination", state.eventPagination, "events");
+    return;
+  }
+  target.dataset.renderSignature = signature;
   if (!state.events.length) {
     target.innerHTML = `<div class="event-empty">还没有通知记录</div>`;
     renderPagination("#eventPagination", state.eventPagination, "events");
@@ -305,6 +408,11 @@ function renderPagination(selector, pagination, type) {
   const previousPage = Math.max(1, page - 1);
   const nextPage = Math.min(totalPages, page + 1);
   target.classList.remove("is-hidden");
+  const signature = `${type}:${page}:${totalPages}:${total}:${state.pageSize}`;
+  if (target.dataset.renderSignature === signature) {
+    return;
+  }
+  target.dataset.renderSignature = signature;
   target.innerHTML = `
     <span class="pagination-copy">第 ${page} / ${totalPages} 页 · 共 ${total} 条 · 每页 ${state.pageSize} 条</span>
     <span class="pagination-actions">
