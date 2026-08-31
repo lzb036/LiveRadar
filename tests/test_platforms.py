@@ -12,6 +12,7 @@ from backend.platforms import (
     DouyinAdapter,
     HuyaAdapter,
     PlatformError,
+    UpstreamHttpError,
     parse_room_reference,
 )
 
@@ -189,6 +190,59 @@ class PlatformAdapterTests(unittest.TestCase):
             "http://127.0.0.1:1088/api/v1/rooms/6096197105",
             headers={"Authorization": "Bearer test-api-key"},
         )
+
+    @patch.dict(
+        os.environ,
+        {
+            "DOUYIN_LIVE_API_URL": "http://127.0.0.1:1088",
+            "DOUYIN_LIVE_API_KEY": "test-api-key",
+        },
+        clear=False,
+    )
+    @patch("backend.platforms.http_get")
+    def test_douyin_helper_retries_temporary_503(self, mock_get):
+        mock_get.side_effect = [
+            UpstreamHttpError("HTTP 503", 503),
+            json.dumps(
+                {
+                    "ok": True,
+                    "data": {
+                        "live_id": "6096197105",
+                        "status": "offline",
+                        "has_room": True,
+                    },
+                }
+            ),
+        ]
+
+        snapshot = DouyinAdapter().fetch(
+            parse_room_reference("6096197105", "douyin")
+        )
+
+        self.assertEqual(snapshot.status, "offline")
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch.dict(
+        os.environ,
+        {
+            "DOUYIN_LIVE_API_URL": "http://127.0.0.1:1088",
+            "DOUYIN_LIVE_API_KEY": "test-api-key",
+        },
+        clear=False,
+    )
+    @patch("backend.platforms.http_get")
+    def test_douyin_helper_reports_friendly_503_error(self, mock_get):
+        mock_get.side_effect = UpstreamHttpError("HTTP 503", 503)
+
+        with self.assertRaisesRegex(
+            PlatformError,
+            "暂时无法确认状态，下一轮将自动重试",
+        ):
+            DouyinAdapter().fetch(
+                parse_room_reference("6096197105", "douyin")
+            )
+
+        self.assertEqual(mock_get.call_count, 2)
 
     @patch("backend.platforms.http_get")
     def test_douyin_missing_status_is_error(self, mock_get):

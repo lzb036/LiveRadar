@@ -24,6 +24,12 @@ class PlatformError(RuntimeError):
     """Raised when a platform cannot provide a trustworthy room snapshot."""
 
 
+class UpstreamHttpError(PlatformError):
+    def __init__(self, message: str, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 @dataclass(frozen=True)
 class RoomReference:
     platform: str
@@ -65,7 +71,12 @@ def http_get(
         with urlopen(request, timeout=timeout) as response:
             charset = response.headers.get_content_charset() or "utf-8"
             return response.read().decode(charset, errors="replace")
-    except (HTTPError, URLError, TimeoutError) as exc:
+    except HTTPError as exc:
+        raise UpstreamHttpError(
+            f"网络请求失败：HTTP Error {exc.code}: {exc.reason}",
+            exc.code,
+        ) from exc
+    except (URLError, TimeoutError) as exc:
         raise PlatformError(f"网络请求失败：{exc}") from exc
 
 
@@ -412,10 +423,11 @@ def _fetch_douyin_with_helper(
         f"{helper_url}/api/v1/rooms/"
         f"{quote(reference.room_key, safe='')}"
     )
-    try:
-        payload = json.loads(http_get(endpoint, headers=headers))
-    except json.JSONDecodeError as exc:
-        raise PlatformError("抖音状态辅助服务返回了无法解析的结果") from exc
+    payload = _fetch_douyin_helper_payload(
+        endpoint,
+        headers,
+        reference.room_key,
+    )
 
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         raise PlatformError("抖音状态辅助服务返回异常")
@@ -444,6 +456,39 @@ def _fetch_douyin_with_helper(
         anchor_key=reference.anchor_key,
         profile_url=reference.profile_url,
     )
+
+
+def _fetch_douyin_helper_payload(
+    endpoint: str,
+    headers: dict[str, str],
+    room_key: str,
+) -> dict[str, Any]:
+    last_error: UpstreamHttpError | None = None
+    for attempt in range(2):
+        try:
+            payload = json.loads(http_get(endpoint, headers=headers))
+        except UpstreamHttpError as exc:
+            if exc.status_code != 503:
+                raise
+            last_error = exc
+            if attempt == 0:
+                time.sleep(0.8)
+                continue
+            raise PlatformError(
+                f"抖音直播间 {room_key} 暂时无法确认状态，下一轮将自动重试"
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise PlatformError(
+                "抖音状态辅助服务返回了无法解析的结果"
+            ) from exc
+
+        if not isinstance(payload, dict) or payload.get("ok") is not True:
+            raise PlatformError("抖音状态辅助服务返回异常")
+        return payload
+
+    raise PlatformError(
+        f"抖音直播间 {room_key} 暂时无法确认状态，下一轮将自动重试"
+    ) from last_error
 
 
 ADAPTERS = {
