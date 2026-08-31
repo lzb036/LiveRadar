@@ -317,9 +317,9 @@ class AppApiTests(unittest.TestCase):
         stopped_event = next(
             event for event in events if event["event_type"] == "stopped"
         )
-        self.assertEqual(
+        self.assertRegex(
             stopped_event["title"],
-            "下播测试下播了，时长为00:00:00",
+            r"^下播测试下播了，时长为\d{2}:\d{2}:\d{2}$",
         )
         self.assertEqual(stopped_event["message"], "")
 

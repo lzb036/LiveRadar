@@ -372,9 +372,12 @@ function renderEvents() {
       const eventLabel = event.event_type === "started" ? "开播" : "下播";
       const stateLabel = event.delivered ? "已送达" : "发送失败";
       const statusClass = event.delivered ? "event-success" : "event-failed";
+      const eventTypeClass = event.event_type === "started"
+        ? "event-started"
+        : "event-stopped";
       return `
         <div class="event-row">
-          <span class="event-type ${statusClass}">${escapeHtml(eventLabel)}</span>
+          <span class="event-type ${eventTypeClass}">${escapeHtml(eventLabel)}</span>
           <div class="event-copy">
             <strong>${escapeHtml(streamName)}</strong>
             <span>${escapeHtml(event.message.split("\n")[0] || event.title)}</span>
