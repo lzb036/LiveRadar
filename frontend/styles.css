@@ -519,6 +519,45 @@ a {
   font-weight: 500;
 }
 
+.next-scan {
+  margin-top: 17px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.next-scan-label,
+.next-scan-hint {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.next-scan-label {
+  font-weight: 700;
+}
+
+.next-scan strong {
+  margin: 3px 0 1px;
+  color: var(--green);
+  font-family: var(--mono);
+  font-size: 25px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+
+.next-scan strong[data-state="checking"] {
+  color: var(--blue);
+  font-size: 17px;
+}
+
+.next-scan-hint {
+  color: var(--subtle);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

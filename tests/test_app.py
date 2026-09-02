@@ -339,19 +339,35 @@ class AppApiTests(unittest.TestCase):
 
     def test_settings_do_not_expose_secrets(self):
         headers = self.login_headers()
-        status, _ = self.app.handle_api(
-            "PUT",
-            "/api/settings",
-            {
-                "monitor_interval_seconds": 45,
-                "notify_provider": "serverchan",
-                "serverchan_sendkey": "SCT-test-secret",
-                "notify_on_start": "false",
-            },
-            {},
-            headers,
-        )
+        with patch.object(self.app.monitor, "settings_changed") as settings_changed:
+            status, _ = self.app.handle_api(
+                "PUT",
+                "/api/settings",
+                {
+                    "monitor_interval_seconds": 45,
+                    "notify_provider": "serverchan",
+                },
+                {},
+                headers,
+            )
         self.assertEqual(status, 200)
+        settings_changed.assert_called_once()
+
+        with patch.object(self.app.monitor, "settings_changed") as settings_changed:
+            status, _ = self.app.handle_api(
+                "PUT",
+                "/api/settings",
+                {
+                    "monitor_interval_seconds": 45,
+                    "notify_provider": "serverchan",
+                    "serverchan_sendkey": "SCT-test-secret",
+                    "notify_on_start": "false",
+                },
+                {},
+                headers,
+            )
+        self.assertEqual(status, 200)
+        settings_changed.assert_not_called()
         status, payload = self.app.handle_api(
             "GET",
             "/api/settings",
@@ -448,6 +464,25 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(response.body["pagination"]["total"], 1)
         self.assertEqual(len(response.body["items"]), 1)
         self.assertEqual(response.body["items"][0]["platform"], "huya")
+
+    def test_dashboard_exposes_next_check_at(self):
+        headers = self.login_headers()
+        expected = "2026-09-02T05:00:00+00:00"
+        with patch.object(
+            self.app.monitor,
+            "next_check_at",
+            return_value=expected,
+        ):
+            response = self.app.handle_api(
+                "GET",
+                "/api/streams",
+                None,
+                {"page": ["1"], "filter": ["all"]},
+                headers,
+            )
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body["metrics"]["next_check_at"], expected)
 
     def test_stream_api_returns_fixed_page_size(self):
         headers = self.login_headers()

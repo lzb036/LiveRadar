@@ -168,6 +168,11 @@
             <span class="scan-status-label">自动扫描</span>
             <strong id="scanInterval">每 60 秒</strong>
             <span class="scan-status-time" id="lastScan">尚未检查</span>
+            <div class="next-scan">
+              <span class="next-scan-label">下次检测倒计时</span>
+              <strong id="nextScanCountdown" data-state="checking">正在检测</strong>
+              <span class="next-scan-hint" id="nextScanHint">等待下一轮检测计划</span>
+            </div>
           </div>
         </section>
 
@@ -333,12 +338,12 @@
         </div>
         <div class="modal-body">
           <label class="field">
-            <span>检查间隔</span>
+            <span>循环检测间隔</span>
             <div class="input-with-suffix">
               <input id="intervalInput" name="monitor_interval_seconds" type="number" min="15" max="3600" step="1" required />
               <span>秒</span>
             </div>
-            <small>建议保持在 30 到 120 秒之间。</small>
+            <small>填写 15～3600 秒，保存后立即应用到下一轮检测。</small>
           </label>
           <label class="field">
             <span>微信通知方式</span>

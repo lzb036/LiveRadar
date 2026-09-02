@@ -87,6 +87,32 @@ function formatDurationSeconds(value) {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
+function updateNextScanCountdown() {
+  const countdown = $("#nextScanCountdown");
+  const hint = $("#nextScanHint");
+  if (!countdown || !hint) return;
+
+  const nextCheckAt = Date.parse(state.metrics?.next_check_at || "");
+  if (Number.isNaN(nextCheckAt)) {
+    countdown.textContent = "正在检测";
+    countdown.dataset.state = "checking";
+    hint.textContent = "等待下一轮检测计划";
+    return;
+  }
+
+  const remainingSeconds = Math.ceil((nextCheckAt - Date.now()) / 1000);
+  if (remainingSeconds <= 0) {
+    countdown.textContent = "正在检测";
+    countdown.dataset.state = "checking";
+    hint.textContent = "本轮检测进行中";
+    return;
+  }
+
+  countdown.textContent = formatDurationSeconds(remainingSeconds);
+  countdown.dataset.state = "waiting";
+  hint.textContent = `间隔 ${state.settings.monitor_interval_seconds ?? 60} 秒`;
+}
+
 function streamHasLiveSession(stream) {
   return stream.status === "live" || Boolean(Number(stream.live_session_active));
 }
@@ -147,6 +173,7 @@ function renderMetrics() {
     ? `上次 ${formatTime(metrics.last_checked_at)}`
     : "尚未检查";
   $("#scanInterval").textContent = `每 ${state.settings.monitor_interval_seconds ?? 60} 秒`;
+  updateNextScanCountdown();
 }
 
 function normalizeView(value) {
@@ -889,3 +916,4 @@ initialize();
 switchView(window.location.hash.slice(1), false);
 window.setInterval(loadDashboard, 30000);
 window.setInterval(updateLiveDurations, 1000);
+window.setInterval(updateNextScanCountdown, 1000);

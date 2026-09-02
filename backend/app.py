@@ -203,12 +203,14 @@ class LiveMonitorApp:
             platform_filter=platform_filter,
             search_query=search_query,
         )
+        metrics = self.database.metrics()
+        metrics["next_check_at"] = self.monitor.next_check_at()
         return self._response(
             200,
             {
                 "items": items,
                 "pagination": pagination,
-                "metrics": self.database.metrics(),
+                "metrics": metrics,
                 "settings": self._public_settings(),
             },
         )
@@ -312,7 +314,13 @@ class LiveMonitorApp:
         ):
             if key in body and str(body[key]).strip():
                 updates[key] = str(body[key]).strip()
+        interval_changed = (
+            current["monitor_interval_seconds"]
+            != updates["monitor_interval_seconds"]
+        )
         settings = self.database.save_settings(updates)
+        if interval_changed:
+            self.monitor.settings_changed()
         return self._response(200, {"settings": self._public_settings(settings)})
 
     def _public_settings(self, settings: dict[str, str] | None = None) -> dict[str, Any]:

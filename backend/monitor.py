@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .database import Database
@@ -20,6 +20,9 @@ class MonitorService:
     def __init__(self, database: Database) -> None:
         self.database = database
         self._stop_event = threading.Event()
+        self._wake_condition = threading.Condition()
+        self._settings_revision = 0
+        self._next_check_at: datetime | None = None
         self._run_lock = threading.Lock()
         self._thread: threading.Thread | None = None
 
@@ -36,8 +39,26 @@ class MonitorService:
 
     def stop(self) -> None:
         self._stop_event.set()
+        with self._wake_condition:
+            self._next_check_at = None
+            self._wake_condition.notify_all()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3)
+
+    def settings_changed(self) -> None:
+        """Wake the loop so a newly saved interval is applied immediately."""
+        with self._wake_condition:
+            self._settings_revision += 1
+            self._next_check_at = None
+            self._wake_condition.notify_all()
+
+    def next_check_at(self) -> str | None:
+        with self._wake_condition:
+            return (
+                self._next_check_at.isoformat(timespec="seconds")
+                if self._next_check_at
+                else None
+            )
 
     def _run_loop(self) -> None:
         self.check_all(allow_notify=False)
@@ -47,8 +68,23 @@ class MonitorService:
                 interval = max(15, min(3600, int(settings["monitor_interval_seconds"])))
             except (KeyError, ValueError):
                 interval = 60
-            if self._stop_event.wait(interval):
+            with self._wake_condition:
+                revision = self._settings_revision
+                self._next_check_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=interval
+                )
+                changed = self._wake_condition.wait_for(
+                    lambda: (
+                        self._stop_event.is_set()
+                        or self._settings_revision != revision
+                    ),
+                    timeout=interval,
+                )
+                self._next_check_at = None
+            if self._stop_event.is_set():
                 break
+            if changed:
+                continue
             self.check_all(allow_notify=True)
 
     def check_all(self, *, allow_notify: bool) -> list[dict[str, Any]]:
