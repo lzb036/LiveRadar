@@ -716,7 +716,15 @@ async function deleteStream(id, button) {
   const stream = state.streams.find((item) => item.id === Number(id));
   if (!stream) return;
   const name = stream.display_name || stream.anchor_name || `${platformLabels[stream.platform]} 房间`;
-  if (!window.confirm(`确定删除“${name}”吗？删除后不会再监测此直播间。`)) return;
+  openConfirmDialog({
+    title: "删除直播间",
+    message: `确定删除“${name}”吗？删除后不会再监测此直播间，且无法恢复。`,
+    confirmLabel: "删除直播间",
+    action: () => performDeleteStream(id, button),
+  });
+}
+
+async function performDeleteStream(id, button) {
   setButtonBusy(button, true, "删除中");
   try {
     await requestJSON(`/api/streams/${id}`, { method: "DELETE" });
